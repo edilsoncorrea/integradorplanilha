@@ -99,7 +99,7 @@ const RetornoAPI = 22;
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: unknown[]; executeAPI?: boolean }): Promise<{ [key: string]: unknown }> {
+async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[]; executeAPI?: boolean }): Promise<object> {
   const action = inputs?.action || 'buildDocumentos';
 
   // NOTA: Office Scripts NÃO suporta fetch() ou chamadas HTTP diretas
@@ -302,7 +302,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
  * @param inputs Deve conter: results = Array<{sheetRow, field, value, nome?}>
  * @returns { ok: boolean, updated: number }
  */
-function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { results?: unknown[] }) {
+function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { results?: object[] }) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -551,7 +551,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
  * @param inputs Deve conter: results = Array<{sheetRow, notaCriada?, retorno?}>
  * @returns { ok: boolean, updated: number }
  */
-function applyResults(workbook: ExcelScript.Workbook, inputs?: { results?: unknown[] }) {
+function applyResults(workbook: ExcelScript.Workbook, inputs?: { results?: object[] }) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
