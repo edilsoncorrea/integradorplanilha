@@ -96,10 +96,19 @@ const NotaCriada = 21;
 const RetornoAPI = 22;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// TIPOS DE RETORNO
+// ═══════════════════════════════════════════════════════════════════════════
+
+type ScriptReturnValue = string | number | boolean | string[] | number[] | boolean[] | object[];
+interface ScriptReturnObject {
+  [key: string]: ScriptReturnValue | ScriptReturnObject | ScriptReturnObject[] | undefined;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[]; executeAPI?: boolean }): Promise<object> {
+async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[]; executeAPI?: boolean }): Promise<ScriptReturnObject> {
   const action = inputs?.action || 'buildDocumentos';
 
   // NOTA: Office Scripts NÃO suporta fetch() ou chamadas HTTP diretas
