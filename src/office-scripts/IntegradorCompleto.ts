@@ -99,8 +99,15 @@ const RetornoAPI = 22;
 // TIPOS DE RETORNO E PARÂMETROS
 // ═══════════════════════════════════════════════════════════════════════════
 
+type AllowedValue = string | number | boolean | undefined;
+type AllowedArray = string[] | number[] | boolean[];
+
+interface NestedObject {
+  [key: string]: AllowedValue | AllowedArray;
+}
+
 interface ScriptReturnObject {
-  [key: string]: string | number | boolean | string[] | number[] | boolean[] | ScriptReturnObject | ScriptReturnObject[] | undefined;
+  [key: string]: AllowedValue | AllowedArray | NestedObject | NestedObject[];
 }
 
 interface ValidationResult {
@@ -302,7 +309,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook): ScriptReturnObj
   }
 
   return { 
-    queries: queries as ScriptReturnObject[],
+    queries: queries as NestedObject[],
     total: queries.length,
     note: 'Execute cada query no Power Automate e chame applyValidationResults com os resultados'
   };
@@ -441,7 +448,7 @@ function buildPedidos(workbook: ExcelScript.Workbook): ScriptReturnObject {
   }
 
   return { 
-    payloads: payloads as ScriptReturnObject[],
+    payloads: payloads as NestedObject[],
     total: payloads.length,
     note: 'POST cada payload para /api/pedidosVenda e chame applyResults com as respostas'
   };
@@ -528,7 +535,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook): ScriptReturnObject {
   }
 
   return { 
-    payloads: payloads as ScriptReturnObject[],
+    payloads: payloads as NestedObject[],
     total: payloads.length,
     note: 'POST cada payload para /api/documentos e chame applyResults com as respostas'
   };
