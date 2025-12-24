@@ -1,0 +1,29 @@
+{
+  "name": "pwc-office-scripts-test",
+  "version": "1.0.0",
+  "description": "Ambiente de testes para Office Scripts TypeScript",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node dist/test/test-runner.js",
+    "test:debug": "npm run build && node dist/test/debug-api.test.js",
+    "test:api": "npm run build && node dist/test/real-api-debug.test.js",
+    "test:auth": "npm run build && node dist/test/bimer-auth.test.js",
+    "debug:auth": "npm run build && node dist/test/debug-auth-step-by-step.test.js",
+    "test:fail": "npm run build && node dist/test/test-auth-failure.test.js",
+    "test:exception": "npm run build && node dist/test/test-exception.test.js",
+    "test:real": "npm run build && node dist/test/real-bimer-api.test.js",
+    "test:formats": "npm run build && node dist/test/test-different-formats.test.js",
+    "test:endpoints": "npm run build && node dist/test/test-pedido-endpoints.test.js",
+    "discover:api": "npm run build && node dist/test/test-api-discovery.test.js",
+    "test:documentos": "npm run build && node dist/test/test-documentos-endpoint.test.js",
+    "test:watch": "tsc --watch & nodemon dist/test/test-runner.js",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "nodemon": "^3.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
+}
