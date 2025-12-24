@@ -686,7 +686,7 @@ function md5(str: string): string {
   }
 
   function wordToHex(lValue: number) {
-    let wordToHexValue = '', wordToHexValueTemp = '', lByte, lCount;
+    let wordToHexValue = '', wordToHexValueTemp = '', lByte: number, lCount: number;
     for (lCount = 0; lCount <= 3; lCount++) {
       lByte = (lValue >>> (lCount * 8)) & 255;
       wordToHexValueTemp = '0' + lByte.toString(16);
