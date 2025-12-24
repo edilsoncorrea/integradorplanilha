@@ -237,7 +237,7 @@ type MainReturn =
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Promise<MainReturn> {
+async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Promise<object> {
   const action = inputs?.action || 'buildDocumentos';
 
   // NOTA: Office Scripts NÃO suporta fetch() ou chamadas HTTP diretas
