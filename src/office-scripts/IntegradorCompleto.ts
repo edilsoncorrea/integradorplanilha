@@ -95,6 +95,15 @@ const VencimentoFatura = 20;
 const NotaCriada = 21;
 const RetornoAPI = 22;
 
+// Interface para tipagem do fetch response
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json(): Promise<object>;
+  text(): Promise<string>;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
@@ -184,13 +193,13 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       nonce: nonce
     });
 
-    const authResponse: any = await fetch(authUrl, {
+    const authResponse: FetchResponse = await fetch(authUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: authBody.toString()
-    });
+    }) as FetchResponse;
 
     if (!authResponse.ok) {
       return { 
@@ -252,14 +261,14 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       }
 
       try {
-        const response: any = await fetch(apiUrl, {
+        const response: FetchResponse = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(item.payload)
-        });
+        }) as FetchResponse;
 
         if (response.ok) {
           const responseJson: { Identificador?: string } = await response.json() as { Identificador?: string };
