@@ -96,19 +96,42 @@ const NotaCriada = 21;
 const RetornoAPI = 22;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TIPOS DE RETORNO
+// TIPOS DE RETORNO E PARÂMETROS
 // ═══════════════════════════════════════════════════════════════════════════
 
-type ScriptReturnValue = string | number | boolean | string[] | number[] | boolean[] | object[];
 interface ScriptReturnObject {
-  [key: string]: ScriptReturnValue | ScriptReturnObject | ScriptReturnObject[] | undefined;
+  [key: string]: string | number | boolean | string[] | number[] | boolean[] | ScriptReturnObject | ScriptReturnObject[] | undefined;
+}
+
+interface ValidationResult {
+  sheetRow: number;
+  field: string;
+  value: string;
+  nome?: string;
+}
+
+interface ApplyResult {
+  sheetRow: number;
+  notaCriada?: string;
+  retorno?: string;
+}
+
+interface ScriptInputs {
+  action?: string;
+  host?: string;
+  username?: string;
+  senha?: string;
+  nonce?: string;
+  value?: string;
+  results?: ValidationResult[] | ApplyResult[];
+  executeAPI?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[]; executeAPI?: boolean }): Promise<ScriptReturnObject> {
+async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Promise<ScriptReturnObject> {
   const action = inputs?.action || 'buildDocumentos';
 
   // NOTA: Office Scripts NÃO suporta fetch() ou chamadas HTTP diretas
@@ -155,13 +178,7 @@ async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; 
 // SEÇÃO 1: AUTENTICAÇÃO
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Gera o payload de autenticação para a API Bimer
- * 
- * @param inputs Deve conter: host (opcional), username, senha, nonce (opcional)
- * @returns { url, method, payload } para ser usado no Power Automate
- */
-function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: string; nonce?: string }) {
+function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: string; nonce?: string }): ScriptReturnObject {
   const host = (inputs?.host as string) || HOST;
   const username = (inputs?.username as string) || 'supervisor';
   const senha = (inputs?.senha as string) || 'Senhas123';
@@ -187,13 +204,7 @@ function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: s
   };
 }
 
-/**
- * Calcula hash MD5 de um valor
- * 
- * @param inputs Deve conter: value (string a ser hasheada)
- * @returns { md5: string }
- */
-function hashValue(inputs?: { value?: string }) {
+function hashValue(inputs?: { value?: string }): ScriptReturnObject {
   const value = (inputs?.value as string) || '';
   return { md5: md5(value) };
 }
@@ -202,14 +213,7 @@ function hashValue(inputs?: { value?: string }) {
 // SEÇÃO 2: VALIDAÇÃO DA PLANILHA
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Analisa a planilha e retorna lista de consultas GET necessárias para
- * buscar identificadores faltantes (Cliente, Operação, Serviço, etc.)
- * 
- * @param workbook Workbook do Excel
- * @returns { queries: Array<{sheetRow, method, endpoint, field}> }
- */
-function buildValidationQueries(workbook: ExcelScript.Workbook) {
+function buildValidationQueries(workbook: ExcelScript.Workbook): ScriptReturnObject {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -298,24 +302,17 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
   }
 
   return { 
-    queries,
+    queries: queries as ScriptReturnObject[],
     total: queries.length,
     note: 'Execute cada query no Power Automate e chame applyValidationResults com os resultados'
   };
 }
 
-/**
- * Aplica os resultados das consultas de validação na planilha
- * 
- * @param workbook Workbook do Excel
- * @param inputs Deve conter: results = Array<{sheetRow, field, value, nome?}>
- * @returns { ok: boolean, updated: number }
- */
-function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { results?: object[] }) {
+function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ScriptReturnObject {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results: { sheetRow: number; field: string; value: string; nome?: string }[] = (inputs?.results as { sheetRow: number; field: string; value: string; nome?: string }[]) || [];
+  const results = (inputs?.results as ValidationResult[]) || [];
   let updated = 0;
 
   for (const res of results) {
@@ -357,13 +354,7 @@ function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { resul
 // SEÇÃO 3: CRIAÇÃO DE PEDIDOS DE VENDA
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Gera payloads de pedidos de venda a partir das linhas da planilha
- * 
- * @param workbook Workbook do Excel
- * @returns { payloads: Array<{sheetRow, payload}> }
- */
-function buildPedidos(workbook: ExcelScript.Workbook) {
+function buildPedidos(workbook: ExcelScript.Workbook): ScriptReturnObject {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -450,7 +441,7 @@ function buildPedidos(workbook: ExcelScript.Workbook) {
   }
 
   return { 
-    payloads,
+    payloads: payloads as ScriptReturnObject[],
     total: payloads.length,
     note: 'POST cada payload para /api/pedidosVenda e chame applyResults com as respostas'
   };
@@ -460,13 +451,7 @@ function buildPedidos(workbook: ExcelScript.Workbook) {
 // SEÇÃO 4: CRIAÇÃO DE DOCUMENTOS FISCAIS
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Gera payloads de documentos fiscais a partir das linhas da planilha
- * 
- * @param workbook Workbook do Excel
- * @returns { payloads: Array<{sheetRow, payload}> }
- */
-function buildDocumentos(workbook: ExcelScript.Workbook) {
+function buildDocumentos(workbook: ExcelScript.Workbook): ScriptReturnObject {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -543,7 +528,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
   }
 
   return { 
-    payloads,
+    payloads: payloads as ScriptReturnObject[],
     total: payloads.length,
     note: 'POST cada payload para /api/documentos e chame applyResults com as respostas'
   };
@@ -553,14 +538,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
 // SEÇÃO 5: APLICAR RESULTADOS
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Aplica resultados das chamadas da API de volta na planilha
- * 
- * @param workbook Workbook do Excel
- * @param inputs Deve conter: results = Array<{sheetRow, notaCriada?, retorno?}>
- * @returns { ok: boolean, updated: number }
- */
-function applyResults(workbook: ExcelScript.Workbook, inputs?: { results?: object[] }) {
+function applyResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ScriptReturnObject {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -598,9 +576,6 @@ function applyResults(workbook: ExcelScript.Workbook, inputs?: { results?: objec
 // FUNÇÕES AUXILIARES
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Extrai valor numérico de string formatada (ex: "R$ 1.500,00" -> 1500)
- */
 function parseValor(valorString: string): number {
   if (typeof valorString === 'number') return valorString;
   
@@ -616,9 +591,6 @@ function parseValor(valorString: string): number {
   return parseFloat(cleaned) || 0;
 }
 
-/**
- * Formata número como moeda brasileira
- */
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
