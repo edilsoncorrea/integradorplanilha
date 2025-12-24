@@ -99,7 +99,7 @@ const RetornoAPI = 22;
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; [key: string]: unknown }) {
+export function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[] }) {
   const action = inputs?.action || 'help';
 
   // AUTENTICAÇÃO
@@ -148,7 +148,7 @@ export function main(workbook: ExcelScript.Workbook, inputs?: { action?: string;
  * @param inputs Deve conter: host (opcional), username, senha, nonce (opcional)
  * @returns { url, method, payload } para ser usado no Power Automate
  */
-function buildAuthPayload(inputs?: { [key: string]: unknown }) {
+function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: string; nonce?: string }) {
   const host = (inputs?.host as string) || HOST;
   const username = (inputs?.username as string) || 'supervisor';
   const senha = (inputs?.senha as string) || 'Senhas123';
@@ -180,7 +180,7 @@ function buildAuthPayload(inputs?: { [key: string]: unknown }) {
  * @param inputs Deve conter: value (string a ser hasheada)
  * @returns { md5: string }
  */
-function hashValue(inputs?: { [key: string]: unknown }) {
+function hashValue(inputs?: { value?: string }) {
   const value = (inputs?.value as string) || '';
   return { md5: md5(value) };
 }
@@ -204,7 +204,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
   if (!used) return { queries: [] };
   const values = used.getValues();
 
-  const queries: { sheetRow: number; method: string; endpoint: string; field: string; codigo: unknown }[] = [];
+  const queries: { sheetRow: number; method: string; endpoint: string; field: string; codigo: string | number }[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -298,11 +298,11 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
  * @param inputs Deve conter: results = Array<{sheetRow, field, value, nome?}>
  * @returns { ok: boolean, updated: number }
  */
-function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { [key: string]: unknown }) {
+function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { results?: object[] }) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = (inputs?.results as { sheetRow: number; field: string; value: unknown; nome?: string }[]) || [];
+  const results = (inputs?.results as { sheetRow: number; field: string; value: string; nome?: string }[]) || [];
   let updated = 0;
 
   for (const res of results) {
@@ -372,7 +372,7 @@ function buildPedidos(workbook: ExcelScript.Workbook) {
       payloads.push({
         sheetRow: i + 1,
         error: 'Campos obrigatórios faltando. Execute validação primeiro.',
-        payload: null
+        payload: {}
       });
       continue;
     }
@@ -461,7 +461,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
   if (!used) return { payloads: [] };
   const values = used.getValues();
 
-  const payloads: { sheetRow: number; error?: string; payload: unknown; tipo?: string }[] = [];
+  const payloads: { sheetRow: number; error?: string; payload: object; tipo?: string }[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -475,7 +475,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
       payloads.push({
         sheetRow: i + 1,
         error: 'Campos obrigatórios faltando. Execute validação primeiro.',
-        payload: null
+        payload: {}
       });
       continue;
     }
@@ -547,11 +547,11 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
  * @param inputs Deve conter: results = Array<{sheetRow, notaCriada?, retorno?}>
  * @returns { ok: boolean, updated: number }
  */
-function applyResults(workbook: ExcelScript.Workbook, inputs?: { [key: string]: unknown }) {
+function applyResults(workbook: ExcelScript.Workbook, inputs?: { results?: object[] }) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = (inputs?.results as { sheetRow: number; notaCriada?: unknown; retorno?: unknown }[]) || [];
+  const results = (inputs?.results as { sheetRow: number; notaCriada?: string; retorno?: string }[]) || [];
   let updated = 0;
 
   for (const res of results) {
