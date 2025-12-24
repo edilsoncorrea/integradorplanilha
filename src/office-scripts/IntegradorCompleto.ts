@@ -99,30 +99,7 @@ const RetornoAPI = 22;
 // TIPOS DE RETORNO E PARÂMETROS
 // ═══════════════════════════════════════════════════════════════════════════
 
-type AllowedValue = string | number | boolean | undefined;
-type AllowedArray = string[] | number[] | boolean[];
-
-interface NestedObject {
-  [key: string]: AllowedValue | AllowedArray;
-}
-
-interface ScriptReturnObject {
-  [key: string]: AllowedValue | AllowedArray | NestedObject | NestedObject[];
-}
-
-interface ValidationResult {
-  sheetRow: number;
-  field: string;
-  value: string;
-  nome?: string;
-}
-
-interface ApplyResult {
-  sheetRow: number;
-  notaCriada?: string;
-  retorno?: string;
-}
-
+// Inputs aceitos pelo Script
 interface ScriptInputs {
   action?: string;
   host?: string;
@@ -130,15 +107,137 @@ interface ScriptInputs {
   senha?: string;
   nonce?: string;
   value?: string;
-  results?: ValidationResult[] | ApplyResult[];
+  results?: object[];
   executeAPI?: boolean;
 }
+
+// Resultados de validação aplicados na planilha
+interface ValidationResult {
+  sheetRow: number;
+  field: string;
+  value: string;
+  nome?: string;
+}
+
+// Resultados de aplicação (resposta da API aplicada)
+interface ApplyResult {
+  sheetRow: number;
+  notaCriada?: string;
+  retorno?: string;
+}
+
+// Formato de erro genérico
+interface ErrorResult { error: string }
+
+// Resultado da ação de ajuda
+interface HelpResult {
+  message: string;
+  actions: {
+    autenticacao: string[];
+    validacao: string[];
+    pedidos: string[];
+    documentos: string[];
+    resultados: string[];
+  };
+  usage: string;
+  exemplo: string;
+  importante: string;
+}
+
+// Resultado da autenticação
+interface AuthPayloadResult {
+  url: string;
+  method: 'POST';
+  payload: {
+    client_id: string;
+    username: string;
+    password: string;
+    grant_type: string;
+    nonce: string;
+  };
+  note: string;
+}
+
+// Resultado do cálculo de hash
+interface HashResult { md5: string }
+
+// Item de consulta para validação
+interface QueryItem {
+  sheetRow: number;
+  method: string;
+  endpoint: string;
+  field: string;
+  codigo: string | number;
+}
+
+// Resultado de consultas de validação
+interface ValidationQueriesResult {
+  queries: QueryItem[];
+  total: number;
+  note: string;
+}
+
+// Item de payload de pedido
+interface PedidoItem {
+  sheetRow: number;
+  error?: string;
+  payload: { [key: string]: unknown };
+  tipo?: string;
+}
+
+// Resultado da criação de pedidos
+interface BuildPedidosResult {
+  payloads: PedidoItem[];
+  total: number;
+  note: string;
+}
+
+// Item de payload de documento
+interface DocumentoItem {
+  sheetRow: number;
+  error?: string;
+  payload: { [key: string]: unknown };
+  tipo?: string;
+}
+
+// Resultado da criação de documentos
+interface BuildDocumentosResult {
+  payloads: DocumentoItem[];
+  total: number;
+  note: string;
+}
+
+// Resultado de aplicação de validação
+interface ApplyValidationResultsResult {
+  ok: boolean;
+  updated: number;
+  message: string;
+}
+
+// Resultado de aplicar respostas da API
+interface ApplyResultsResult {
+  ok: boolean;
+  updated: number;
+  message: string;
+}
+
+// Tipo de retorno principal (união das ações)
+type MainReturn =
+  | HelpResult
+  | ErrorResult
+  | AuthPayloadResult
+  | HashResult
+  | ValidationQueriesResult
+  | ApplyValidationResultsResult
+  | BuildPedidosResult
+  | BuildDocumentosResult
+  | ApplyResultsResult;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Promise<ScriptReturnObject> {
+async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Promise<MainReturn> {
   const action = inputs?.action || 'buildDocumentos';
 
   // NOTA: Office Scripts NÃO suporta fetch() ou chamadas HTTP diretas
@@ -163,7 +262,7 @@ async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Prom
 
   // AJUDA
   if (action === 'help') {
-    return {
+    const help: HelpResult = {
       message: 'INTEGRADOR COMPLETO - Office Scripts para Excel Online',
       actions: {
         autenticacao: ['buildAuthPayload', 'hash'],
@@ -176,6 +275,7 @@ async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Prom
       exemplo: '{ action: "buildPedidos" }',
       importante: 'Office Scripts NÃO suporta fetch(). Use Power Automate para chamadas HTTP.'
     };
+    return help;
   }
 
   return { error: `Ação desconhecida: ${action}` };
@@ -185,7 +285,7 @@ async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Prom
 // SEÇÃO 1: AUTENTICAÇÃO
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: string; nonce?: string }): ScriptReturnObject {
+function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: string; nonce?: string }): AuthPayloadResult {
   const host = (inputs?.host as string) || HOST;
   const username = (inputs?.username as string) || 'supervisor';
   const senha = (inputs?.senha as string) || 'Senhas123';
@@ -211,7 +311,7 @@ function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: s
   };
 }
 
-function hashValue(inputs?: { value?: string }): ScriptReturnObject {
+function hashValue(inputs?: { value?: string }): HashResult {
   const value = (inputs?.value as string) || '';
   return { md5: md5(value) };
 }
@@ -220,12 +320,12 @@ function hashValue(inputs?: { value?: string }): ScriptReturnObject {
 // SEÇÃO 2: VALIDAÇÃO DA PLANILHA
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildValidationQueries(workbook: ExcelScript.Workbook): ScriptReturnObject {
+function buildValidationQueries(workbook: ExcelScript.Workbook): ValidationQueriesResult | ErrorResult {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
   const used = sheet.getUsedRange();
-  if (!used) return { queries: [] };
+  if (!used) return { queries: [], total: 0, note: 'Nenhuma área usada na planilha. Sem consultas a executar.' };
   const values: (string | number | boolean)[][] = used.getValues();
 
   const queries: { sheetRow: number; method: string; endpoint: string; field: string; codigo: string | number }[] = [];
@@ -309,13 +409,13 @@ function buildValidationQueries(workbook: ExcelScript.Workbook): ScriptReturnObj
   }
 
   return { 
-    queries: queries as NestedObject[],
+    queries,
     total: queries.length,
     note: 'Execute cada query no Power Automate e chame applyValidationResults com os resultados'
   };
 }
 
-function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ScriptReturnObject {
+function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ApplyValidationResultsResult | ErrorResult {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -361,15 +461,15 @@ function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: ScriptI
 // SEÇÃO 3: CRIAÇÃO DE PEDIDOS DE VENDA
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildPedidos(workbook: ExcelScript.Workbook): ScriptReturnObject {
+function buildPedidos(workbook: ExcelScript.Workbook): BuildPedidosResult | ErrorResult {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
   const used = sheet.getUsedRange();
-  if (!used) return { payloads: [] };
+  if (!used) return { payloads: [], total: 0, note: 'Nenhuma área usada na planilha. Sem pedidos a gerar.' };
   const values = used.getValues();
 
-  const payloads: { sheetRow: number; error?: string; payload: unknown; tipo?: string }[] = [];
+  const payloads: PedidoItem[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -448,7 +548,7 @@ function buildPedidos(workbook: ExcelScript.Workbook): ScriptReturnObject {
   }
 
   return { 
-    payloads: payloads as NestedObject[],
+    payloads,
     total: payloads.length,
     note: 'POST cada payload para /api/pedidosVenda e chame applyResults com as respostas'
   };
@@ -458,15 +558,15 @@ function buildPedidos(workbook: ExcelScript.Workbook): ScriptReturnObject {
 // SEÇÃO 4: CRIAÇÃO DE DOCUMENTOS FISCAIS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildDocumentos(workbook: ExcelScript.Workbook): ScriptReturnObject {
+function buildDocumentos(workbook: ExcelScript.Workbook): BuildDocumentosResult | ErrorResult {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
   const used = sheet.getUsedRange();
-  if (!used) return { payloads: [] };
+  if (!used) return { payloads: [], total: 0, note: 'Nenhuma área usada na planilha. Sem documentos a gerar.' };
   const values = used.getValues();
 
-  const payloads: { sheetRow: number; error?: string; payload: object; tipo?: string }[] = [];
+  const payloads: DocumentoItem[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -535,7 +635,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook): ScriptReturnObject {
   }
 
   return { 
-    payloads: payloads as NestedObject[],
+    payloads,
     total: payloads.length,
     note: 'POST cada payload para /api/documentos e chame applyResults com as respostas'
   };
@@ -545,11 +645,11 @@ function buildDocumentos(workbook: ExcelScript.Workbook): ScriptReturnObject {
 // SEÇÃO 5: APLICAR RESULTADOS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function applyResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ScriptReturnObject {
+function applyResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ApplyResultsResult | ErrorResult {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = (inputs?.results as { sheetRow: number; notaCriada?: string; retorno?: string }[]) || [];
+  const results = (inputs?.results as ApplyResult[]) || [];
   let updated = 0;
 
   for (const res of results) {
