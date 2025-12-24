@@ -206,7 +206,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
 
   const used = sheet.getUsedRange();
   if (!used) return { queries: [] };
-  const values = used.getValues();
+  const values: (string | number | boolean)[][] = used.getValues();
 
   const queries: { sheetRow: number; method: string; endpoint: string; field: string; codigo: string | number }[] = [];
 
@@ -220,7 +220,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
     // Cliente: buscar por código se não tem identificador
     if (!row[IdentificadorCliente] || String(row[IdentificadorCliente]).trim() === '') {
       const codigoCliente = row[CodigoCliente];
-      if (codigoCliente) {
+      if (codigoCliente && typeof codigoCliente !== 'boolean') {
         queries.push({
           sheetRow: i + 1,
           method: 'GET',
@@ -234,7 +234,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
     // Forma de Pagamento
     if (!row[IdentificadorFormaPagamento] || String(row[IdentificadorFormaPagamento]).trim() === '') {
       const codigoFormaPagamento = row[CodigoDaFormaDePagamento];
-      if (codigoFormaPagamento) {
+      if (codigoFormaPagamento && typeof codigoFormaPagamento !== 'boolean') {
         queries.push({
           sheetRow: i + 1,
           method: 'GET',
@@ -248,7 +248,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
     // Operação
     if (!row[IdentificadorOperacao] || String(row[IdentificadorOperacao]).trim() === '') {
       const codigoOperacao = row[CodigoDaOperacao];
-      if (codigoOperacao) {
+      if (codigoOperacao && typeof codigoOperacao !== 'boolean') {
         queries.push({
           sheetRow: i + 1,
           method: 'GET',
@@ -262,7 +262,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
     // Serviço/Produto
     if (!row[IdentificadorServico] || String(row[IdentificadorServico]).trim() === '') {
       const codigoServico = row[CodigoDoServico];
-      if (codigoServico) {
+      if (codigoServico && typeof codigoServico !== 'boolean') {
         queries.push({
           sheetRow: i + 1,
           method: 'GET',
@@ -276,7 +276,7 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
     // Prazo
     if (!row[IdentificadorPrazo] || String(row[IdentificadorPrazo]).trim() === '') {
       const codigoPrazo = row[Codigoprazo];
-      if (codigoPrazo) {
+      if (codigoPrazo && typeof codigoPrazo !== 'boolean') {
         queries.push({
           sheetRow: i + 1,
           method: 'GET',
@@ -306,7 +306,7 @@ function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { resul
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = (inputs?.results as { sheetRow: number; field: string; value: string; nome?: string }[]) || [];
+  const results: { sheetRow: number; field: string; value: string; nome?: string }[] = (inputs?.results as { sheetRow: number; field: string; value: string; nome?: string }[]) || [];
   let updated = 0;
 
   for (const res of results) {
