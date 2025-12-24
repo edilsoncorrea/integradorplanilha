@@ -66,58 +66,56 @@
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CONSTANTES - Índices das colunas (0-based)
-// ═══════════════════════════════════════════════════════════════════════════
-
-const HOST = "https://homologacaowisepcp.alterdata.com.br/BimerApi";
-
-const CodigoDaEmpresa = 0;
-const CodigoCliente = 1;
-const NomeDoCliente = 2;
-const IdentificadorCliente = 3; 
-const CodigoDaOperacao = 4; 
-const IdentificadorOperacao = 5; 
-const CFOP = 6; 
-const CodigoDoServico = 7; 
-const IdentificadorServico = 8; 
-const NomeDoServico = 9;
-const Quantidade = 10;
-const Valor = 11; 
-const Descriminacao1 = 12; 
-const Descriminacao2 = 13; 
-const Codigoprazo = 14;
-const IdentificadorPrazo = 15;
-const FormaPagamentoEntrada = 16;
-const CodigoDaFormaDePagamento = 17;
-const IdentificadorFormaPagamento = 18;
-const DataEmissao = 19;
-const VencimentoFatura = 20; 
-const NotaCriada = 21;
-const RetornoAPI = 22;
-
-// ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-function main(workbook: ExcelScript.Workbook, inputs?: any): any {
+export function main(workbook: ExcelScript.Workbook, inputs?: any): any {
+  // ═════════════════════════════════════════════════════════════════════════
+  // CONSTANTES - Índices das colunas (0-based)
+  // ═════════════════════════════════════════════════════════════════════════
+  const HOST = "https://homologacaowisepcp.alterdata.com.br/BimerApi";
+  
+  const CodigoDaEmpresa = 0;
+  const CodigoCliente = 1;
+  const NomeDoCliente = 2;
+  const IdentificadorCliente = 3; 
+  const CodigoDaOperacao = 4; 
+  const IdentificadorOperacao = 5; 
+  const CFOP = 6; 
+  const CodigoDoServico = 7; 
+  const IdentificadorServico = 8; 
+  const NomeDoServico = 9;
+  const Quantidade = 10;
+  const Valor = 11; 
+  const Descriminacao1 = 12; 
+  const Descriminacao2 = 13; 
+  const Codigoprazo = 14;
+  const IdentificadorPrazo = 15;
+  const FormaPagamentoEntrada = 16;
+  const CodigoDaFormaDePagamento = 17;
+  const IdentificadorFormaPagamento = 18;
+  const DataEmissao = 19;
+  const VencimentoFatura = 20; 
+  const NotaCriada = 21;
+  const RetornoAPI = 22;
   const action = inputs?.action || 'help';
 
   // AUTENTICAÇÃO
-  if (action === 'buildAuthPayload') return buildAuthPayload(inputs);
+  if (action === 'buildAuthPayload') return buildAuthPayload(inputs, HOST);
   if (action === 'hash') return hashValue(inputs);
 
   // VALIDAÇÃO
-  if (action === 'buildValidationQueries') return buildValidationQueries(workbook);
-  if (action === 'applyValidationResults') return applyValidationResults(workbook, inputs);
+  if (action === 'buildValidationQueries') return buildValidationQueries(workbook, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
+  if (action === 'applyValidationResults') return applyValidationResults(workbook, inputs, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
 
   // PEDIDOS DE VENDA
-  if (action === 'buildPedidos') return buildPedidos(workbook);
+  if (action === 'buildPedidos') return buildPedidos(workbook, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
 
   // DOCUMENTOS FISCAIS
-  if (action === 'buildDocumentos') return buildDocumentos(workbook);
+  if (action === 'buildDocumentos') return buildDocumentos(workbook, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
 
   // APLICAR RESULTADOS
-  if (action === 'applyResults') return applyResults(workbook, inputs);
+  if (action === 'applyResults') return applyResults(workbook, inputs, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
 
   // AJUDA
   if (action === 'help') {
