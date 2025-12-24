@@ -100,7 +100,7 @@ const RetornoAPI = 22;
 // ═══════════════════════════════════════════════════════════════════════════
 
 function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[] }) {
-  const action = inputs?.action || 'help';
+  const action = inputs?.action || 'buildDocumentos';
 
   // AUTENTICAÇÃO
   if (action === 'buildAuthPayload') return buildAuthPayload(inputs);
