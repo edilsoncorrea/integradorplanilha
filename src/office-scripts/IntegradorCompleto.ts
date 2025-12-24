@@ -99,8 +99,18 @@ const RetornoAPI = 22;
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[] }) {
-  const action = inputs?.action || 'buildDocumentos';
+async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?: string; username?: string; senha?: string; nonce?: string; value?: string; results?: object[]; executeAPI?: boolean }): Promise<object> {
+  const action = inputs?.action || 'criarDocumentosCompleto';
+  const executeAPI = inputs?.executeAPI !== false; // Default true
+
+  // FLUXO COMPLETO (NOVO - COM EXECUÇÃO AUTOMÁTICA)
+  if (action === 'criarDocumentosCompleto') {
+    if (executeAPI) {
+      return await executarFluxoCompleto(workbook, inputs);
+    } else {
+      return buildDocumentos(workbook);
+    }
+  }
 
   // AUTENTICAÇÃO
   if (action === 'buildAuthPayload') return buildAuthPayload(inputs);
@@ -130,7 +140,181 @@ function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; host?:
         documentos: ['buildDocumentos'],
         resultados: ['applyResults']
       },
-      usage: 'Passe inputs.action com uma das ações listadas acima',
+      usa0: FLUXO COMPLETO COM FETCH (NOVO)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Executa o fluxo completo: autenticação → criar documentos → atualizar planilha
+ * USA FETCH para fazer chamadas HTTP diretas à API Bimer
+ * 
+ * @param workbook Workbook do Excel
+ * @param inputs Configurações opcionais (host, username, senha)
+ * @returns Resultado da execução completa
+ */
+async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { host?: string; username?: string; senha?: string; nonce?: string }): Promise<object> {
+  const host = (inputs?.host as string) || HOST;
+  const username = (inputs?.username as string) || 'supervisor';
+  const senha = (inputs?.senha as string) || 'Senhas123';
+  const nonce = (inputs?.nonce as string) || '123456789';
+
+  try {
+    // ═══════════════════════════════════════════════════════════════════════
+    // PASSO 1: AUTENTICAÇÃO
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('🔐 Autenticando na API Bimer...');
+    
+    const password = md5(username + nonce + senha);
+    const authUrl = host.endsWith('/') ? host + 'oauth/token' : host + '/oauth/token';
+    
+    const authBody = new URLSearchParams({
+      client_id: 'IntegracaoBimer.js',
+      username: username,
+      password: password,
+      grant_type: 'password',
+      nonce: nonce
+    });
+
+    const authResponse = await fetch(authUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: authBody.toString()
+    });
+
+    if (!authResponse.ok) {
+      return { 
+        error: 'Falha na autenticação', 
+        status: authResponse.status,
+        statusText: authResponse.statusText
+      };
+    }
+
+    const authData: { access_token?: string } = await authResponse.json();
+    const token = authData.access_token;
+
+    if (!token) {
+      return { error: 'Token não retornado pela API' };
+    }
+
+    console.log('✅ Autenticado com sucesso!');
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PASSO 2: GERAR PAYLOADS DOS DOCUMENTOS
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('📄 Gerando payloads dos documentos...');
+    
+    const buildResult = buildDocumentos(workbook);
+    
+    if ('error' in buildResult) {
+      return buildResult;
+    }
+
+    const payloads = buildResult.payloads || [];
+    console.log(`📦 ${payloads.length} documento(s) para processar`);
+
+    if (payloads.length === 0) {
+      return { message: 'Nenhum documento para processar', total: 0 };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PASSO 3: CRIAR DOCUMENTOS NA API E COLETAR RESULTADOS
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('🚀 Criando documentos na API...');
+    
+    const apiUrl = host.endsWith('/') ? host + 'api/documentos' : host + '/api/documentos';
+    const results: { sheetRow: number; notaCriada: string; retorno: string }[] = [];
+    let sucessos = 0;
+    let erros = 0;
+
+    for (const item of payloads) {
+      const sheetRow = item.sheetRow;
+      
+      // Pula linhas com erro de validação
+      if (item.error) {
+        results.push({
+          sheetRow: sheetRow,
+          notaCriada: 'Não',
+          retorno: item.error
+        });
+        erros++;
+        continue;
+      }
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(item.payload)
+        });
+
+        if (response.ok) {
+          const responseData: { Identificador?: string } = await response.json();
+          const identificador = responseData.Identificador || 'OK';
+          
+          results.push({
+            sheetRow: sheetRow,
+            notaCriada: 'Sim',
+            retorno: `Documento criado: ${identificador}`
+          });
+          
+          sucessos++;
+          console.log(`✅ Linha ${sheetRow}: ${identificador}`);
+        } else {
+          const errorText = await response.text();
+          results.push({
+            sheetRow: sheetRow,
+            notaCriada: 'Não',
+            retorno: `Erro ${response.status}: ${errorText}`
+          });
+          
+          erros++;
+          console.log(`❌ Linha ${sheetRow}: ${response.status}`);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        results.push({
+          sheetRow: sheetRow,
+          notaCriada: 'Não',
+          retorno: `Exceção: ${errorMsg}`
+        });
+        
+        erros++;
+        console.log(`❌ Linha ${sheetRow}: ${errorMsg}`);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PASSO 4: ATUALIZAR PLANILHA COM RESULTADOS
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('📝 Atualizando planilha com resultados...');
+    
+    const applyResult = applyResults(workbook, { results });
+
+    return {
+      ok: true,
+      processados: payloads.length,
+      sucessos: sucessos,
+      erros: erros,
+      planilhaAtualizada: applyResult.updated,
+      message: `✅ ${sucessos} documento(s) criado(s) | ❌ ${erros} erro(s)`
+    };
+
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('❌ Erro no fluxo completo:', errorMsg);
+    return { 
+      error: 'Erro no fluxo completo', 
+      detalhes: errorMsg 
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEÇÃO ge: 'Passe inputs.action com uma das ações listadas acima',
       exemplo: '{ action: "buildPedidos" }'
     };
   }
