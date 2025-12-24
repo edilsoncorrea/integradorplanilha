@@ -95,15 +95,6 @@ const VencimentoFatura = 20;
 const NotaCriada = 21;
 const RetornoAPI = 22;
 
-// Interface para tipagem do fetch response
-interface FetchResponse {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  json(): Promise<unknown>;
-  text(): Promise<string>;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
@@ -193,13 +184,13 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       nonce: nonce
     });
 
-    const authResponse: FetchResponse = await fetch(authUrl, {
+    const authResponse = await fetch(authUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: authBody.toString()
-    }) as FetchResponse;
+    });
 
     if (!authResponse.ok) {
       return { 
@@ -209,8 +200,7 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       };
     }
 
-    const authJsonRaw = await authResponse.json();
-    const authJson: { access_token?: string } = authJsonRaw as { access_token?: string };
+    const authJson = await authResponse.json() as { access_token?: string };
     const token = authJson.access_token;
 
     if (!token) {
@@ -262,18 +252,17 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       }
 
       try {
-        const response: FetchResponse = await fetch(apiUrl, {
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(item.payload)
-        }) as FetchResponse;
+        });
 
         if (response.ok) {
-          const responseJsonRaw = await response.json();
-          const responseJson: { Identificador?: string } = responseJsonRaw as { Identificador?: string };
+          const responseJson = await response.json() as { Identificador?: string };
           const identificador = responseJson.Identificador || 'OK';
           
           results.push({
