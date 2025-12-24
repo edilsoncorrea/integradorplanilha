@@ -200,9 +200,8 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       };
     }
 
-    const authJson = await authResponse.json();
-    const authData = authJson as { access_token?: string };
-    const token = authData.access_token;
+    const authJson: { access_token?: string } = await authResponse.json() as { access_token?: string };
+    const token = authJson.access_token;
 
     if (!token) {
       return { error: 'Token não retornado pela API' };
@@ -263,9 +262,8 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
         });
 
         if (response.ok) {
-          const responseJson = await response.json();
-          const responseData = responseJson as { Identificador?: string };
-          const identificador = responseData.Identificador || 'OK';
+          const responseJson: { Identificador?: string } = await response.json() as { Identificador?: string };
+          const identificador = responseJson.Identificador || 'OK';
           
           results.push({
             sheetRow: sheetRow,
