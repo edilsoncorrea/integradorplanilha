@@ -184,7 +184,7 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       nonce: nonce
     });
 
-    const authResponse: Response = await fetch(authUrl, {
+    const authResponse = await fetch(authUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -252,7 +252,7 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       }
 
       try {
-        const response: Response = await fetch(apiUrl, {
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
