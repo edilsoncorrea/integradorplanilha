@@ -66,56 +66,58 @@
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CONSTANTES - Índices das colunas (0-based)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const HOST = "https://homologacaowisepcp.alterdata.com.br/BimerApi";
+
+const CodigoDaEmpresa = 0;
+const CodigoCliente = 1;
+const NomeDoCliente = 2;
+const IdentificadorCliente = 3; 
+const CodigoDaOperacao = 4; 
+const IdentificadorOperacao = 5; 
+const CFOP = 6; 
+const CodigoDoServico = 7; 
+const IdentificadorServico = 8; 
+const NomeDoServico = 9;
+const Quantidade = 10;
+const Valor = 11; 
+const Descriminacao1 = 12; 
+const Descriminacao2 = 13; 
+const Codigoprazo = 14;
+const IdentificadorPrazo = 15;
+const FormaPagamentoEntrada = 16;
+const CodigoDaFormaDePagamento = 17;
+const IdentificadorFormaPagamento = 18;
+const DataEmissao = 19;
+const VencimentoFatura = 20; 
+const NotaCriada = 21;
+const RetornoAPI = 22;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function main(workbook: ExcelScript.Workbook, inputs?: any): any {
-  // ═════════════════════════════════════════════════════════════════════════
-  // CONSTANTES - Índices das colunas (0-based)
-  // ═════════════════════════════════════════════════════════════════════════
-  const HOST = "https://homologacaowisepcp.alterdata.com.br/BimerApi";
-  
-  const CodigoDaEmpresa = 0;
-  const CodigoCliente = 1;
-  const NomeDoCliente = 2;
-  const IdentificadorCliente = 3; 
-  const CodigoDaOperacao = 4; 
-  const IdentificadorOperacao = 5; 
-  const CFOP = 6; 
-  const CodigoDoServico = 7; 
-  const IdentificadorServico = 8; 
-  const NomeDoServico = 9;
-  const Quantidade = 10;
-  const Valor = 11; 
-  const Descriminacao1 = 12; 
-  const Descriminacao2 = 13; 
-  const Codigoprazo = 14;
-  const IdentificadorPrazo = 15;
-  const FormaPagamentoEntrada = 16;
-  const CodigoDaFormaDePagamento = 17;
-  const IdentificadorFormaPagamento = 18;
-  const DataEmissao = 19;
-  const VencimentoFatura = 20; 
-  const NotaCriada = 21;
-  const RetornoAPI = 22;
+export function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; [key: string]: unknown }) {
   const action = inputs?.action || 'help';
 
   // AUTENTICAÇÃO
-  if (action === 'buildAuthPayload') return buildAuthPayload(inputs, HOST);
+  if (action === 'buildAuthPayload') return buildAuthPayload(inputs);
   if (action === 'hash') return hashValue(inputs);
 
   // VALIDAÇÃO
-  if (action === 'buildValidationQueries') return buildValidationQueries(workbook, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
-  if (action === 'applyValidationResults') return applyValidationResults(workbook, inputs, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
+  if (action === 'buildValidationQueries') return buildValidationQueries(workbook);
+  if (action === 'applyValidationResults') return applyValidationResults(workbook, inputs);
 
   // PEDIDOS DE VENDA
-  if (action === 'buildPedidos') return buildPedidos(workbook, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
+  if (action === 'buildPedidos') return buildPedidos(workbook);
 
   // DOCUMENTOS FISCAIS
-  if (action === 'buildDocumentos') return buildDocumentos(workbook, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
+  if (action === 'buildDocumentos') return buildDocumentos(workbook);
 
   // APLICAR RESULTADOS
-  if (action === 'applyResults') return applyResults(workbook, inputs, CodigoDaEmpresa, CodigoCliente, NomeDoCliente, IdentificadorCliente, CodigoDaOperacao, IdentificadorOperacao, CFOP, CodigoDoServico, IdentificadorServico, NomeDoServico, Quantidade, Valor, Descriminacao1, Descriminacao2, Codigoprazo, IdentificadorPrazo, FormaPagamentoEntrada, CodigoDaFormaDePagamento, IdentificadorFormaPagamento, DataEmissao, VencimentoFatura, NotaCriada, RetornoAPI);
+  if (action === 'applyResults') return applyResults(workbook, inputs);
 
   // AJUDA
   if (action === 'help') {
@@ -146,11 +148,11 @@ export function main(workbook: ExcelScript.Workbook, inputs?: any): any {
  * @param inputs Deve conter: host (opcional), username, senha, nonce (opcional)
  * @returns { url, method, payload } para ser usado no Power Automate
  */
-function buildAuthPayload(inputs?: any): any {
-  const host = inputs?.host || HOST;
-  const username = inputs?.username || 'supervisor';
-  const senha = inputs?.senha || 'Senhas123';
-  const nonce = inputs?.nonce || '123456789';
+function buildAuthPayload(inputs?: { [key: string]: unknown }) {
+  const host = (inputs?.host as string) || HOST;
+  const username = (inputs?.username as string) || 'supervisor';
+  const senha = (inputs?.senha as string) || 'Senhas123';
+  const nonce = (inputs?.nonce as string) || '123456789';
 
   const password = md5(username + nonce + senha);
 
@@ -178,8 +180,8 @@ function buildAuthPayload(inputs?: any): any {
  * @param inputs Deve conter: value (string a ser hasheada)
  * @returns { md5: string }
  */
-function hashValue(inputs?: any): any {
-  const value = inputs?.value || '';
+function hashValue(inputs?: { [key: string]: unknown }) {
+  const value = (inputs?.value as string) || '';
   return { md5: md5(value) };
 }
 
@@ -194,15 +196,15 @@ function hashValue(inputs?: any): any {
  * @param workbook Workbook do Excel
  * @returns { queries: Array<{sheetRow, method, endpoint, field}> }
  */
-function buildValidationQueries(workbook: ExcelScript.Workbook): any {
+function buildValidationQueries(workbook: ExcelScript.Workbook) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
   const used = sheet.getUsedRange();
   if (!used) return { queries: [] };
-  const values = used.getValues() as any[][];
+  const values = used.getValues();
 
-  const queries: any[] = [];
+  const queries: { sheetRow: number; method: string; endpoint: string; field: string; codigo: unknown }[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -296,11 +298,11 @@ function buildValidationQueries(workbook: ExcelScript.Workbook): any {
  * @param inputs Deve conter: results = Array<{sheetRow, field, value, nome?}>
  * @returns { ok: boolean, updated: number }
  */
-function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: any): any {
+function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: { [key: string]: unknown }) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = inputs?.results || [];
+  const results = (inputs?.results as { sheetRow: number; field: string; value: unknown; nome?: string }[]) || [];
   let updated = 0;
 
   for (const res of results) {
@@ -348,15 +350,15 @@ function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: any): a
  * @param workbook Workbook do Excel
  * @returns { payloads: Array<{sheetRow, payload}> }
  */
-function buildPedidos(workbook: ExcelScript.Workbook): any {
+function buildPedidos(workbook: ExcelScript.Workbook) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
   const used = sheet.getUsedRange();
   if (!used) return { payloads: [] };
-  const values = used.getValues() as any[][];
+  const values = used.getValues();
 
-  const payloads: any[] = [];
+  const payloads: { sheetRow: number; error?: string; payload: unknown; tipo?: string }[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -387,7 +389,7 @@ function buildPedidos(workbook: ExcelScript.Workbook): any {
       `\n\n Data Vencimento: ${row[VencimentoFatura]}`;
 
     // Montar payload do pedido
-    const payload: any = {
+    const payload: { [key: string]: unknown } = {
       CodigoEmpresa: row[CodigoDaEmpresa],
       DataEmissao: row[DataEmissao],
       DataEntrada: row[DataEmissao],
@@ -451,15 +453,15 @@ function buildPedidos(workbook: ExcelScript.Workbook): any {
  * @param workbook Workbook do Excel
  * @returns { payloads: Array<{sheetRow, payload}> }
  */
-function buildDocumentos(workbook: ExcelScript.Workbook): any {
+function buildDocumentos(workbook: ExcelScript.Workbook) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
   const used = sheet.getUsedRange();
   if (!used) return { payloads: [] };
-  const values = used.getValues() as any[][];
+  const values = used.getValues();
 
-  const payloads: any[] = [];
+  const payloads: { sheetRow: number; error?: string; payload: unknown; tipo?: string }[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -490,7 +492,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook): any {
       `\n\n Data Vencimento: ${row[VencimentoFatura]}`;
 
     // Montar payload do documento
-    const payload: any = {
+    const payload: { [key: string]: unknown } = {
       StatusNotaFiscalEletronica: 'A',
       TipoDocumento: 'S',
       TipoPagamento: '0',
@@ -545,11 +547,11 @@ function buildDocumentos(workbook: ExcelScript.Workbook): any {
  * @param inputs Deve conter: results = Array<{sheetRow, notaCriada?, retorno?}>
  * @returns { ok: boolean, updated: number }
  */
-function applyResults(workbook: ExcelScript.Workbook, inputs?: any): any {
+function applyResults(workbook: ExcelScript.Workbook, inputs?: { [key: string]: unknown }) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = inputs?.results || [];
+  const results = (inputs?.results as { sheetRow: number; notaCriada?: unknown; retorno?: unknown }[]) || [];
   let updated = 0;
 
   for (const res of results) {
