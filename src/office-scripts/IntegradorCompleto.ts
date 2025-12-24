@@ -200,7 +200,7 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       };
     }
 
-    const authJson = await authResponse.json() as { access_token?: string };
+    const authJson: { access_token?: string } = (await authResponse.json()) as { access_token?: string };
     const token = authJson.access_token;
 
     if (!token) {
@@ -262,7 +262,7 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
         });
 
         if (response.ok) {
-          const responseJson = await response.json() as { Identificador?: string };
+          const responseJson: { Identificador?: string } = (await response.json()) as { Identificador?: string };
           const identificador = responseJson.Identificador || 'OK';
           
           results.push({
