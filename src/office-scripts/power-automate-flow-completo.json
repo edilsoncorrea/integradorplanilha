@@ -1,0 +1,389 @@
+{
+  "name": "Integrador Completo - Criar Pedidos de Venda",
+  "description": "Flow completo para autenticar, validar e criar pedidos de venda a partir da planilha Excel",
+  "trigger": {
+    "type": "manual",
+    "description": "Executar manualmente quando necessário"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "name": "Inicializar_ArrayResultados",
+      "type": "InitializeVariable",
+      "parameters": {
+        "name": "ResultadosArray",
+        "type": "Array",
+        "value": []
+      }
+    },
+    {
+      "step": 2,
+      "name": "Script_BuildAuthPayload",
+      "type": "ExcelScript.Run",
+      "description": "Gera payload de autenticação",
+      "parameters": {
+        "location": "OneDrive",
+        "file": "/PWC/Planilha.xlsx",
+        "script": "Integrador Completo",
+        "inputs": {
+          "action": "buildAuthPayload",
+          "host": "https://homologacaowisepcp.alterdata.com.br/BimerApi",
+          "username": "supervisor",
+          "senha": "Senhas123",
+          "nonce": "123456789"
+        }
+      },
+      "output": {
+        "url": "URL para POST",
+        "method": "POST",
+        "payload": {
+          "client_id": "IntegracaoBimer.js",
+          "username": "supervisor",
+          "password": "hash_md5",
+          "grant_type": "password",
+          "nonce": "123456789"
+        }
+      }
+    },
+    {
+      "step": 3,
+      "name": "HTTP_ObterToken",
+      "type": "HTTP",
+      "description": "Autentica na API Bimer",
+      "parameters": {
+        "method": "POST",
+        "uri": "@{outputs('Script_BuildAuthPayload').body.result.url}",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "@{outputs('Script_BuildAuthPayload').body.result.payload}"
+      },
+      "output": {
+        "access_token": "token_jwt",
+        "token_type": "Bearer",
+        "expires_in": 3600
+      }
+    },
+    {
+      "step": 4,
+      "name": "Parse_Token",
+      "type": "ParseJson",
+      "parameters": {
+        "content": "@{body('HTTP_ObterToken')}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "access_token": { "type": "string" },
+            "token_type": { "type": "string" },
+            "expires_in": { "type": "integer" }
+          }
+        }
+      }
+    },
+    {
+      "step": 5,
+      "name": "Script_BuildValidationQueries",
+      "type": "ExcelScript.Run",
+      "description": "Identifica campos faltantes na planilha",
+      "parameters": {
+        "location": "OneDrive",
+        "file": "/PWC/Planilha.xlsx",
+        "script": "Integrador Completo",
+        "inputs": {
+          "action": "buildValidationQueries"
+        }
+      },
+      "output": {
+        "queries": [
+          {
+            "sheetRow": 3,
+            "method": "GET",
+            "endpoint": "/api/pessoas/codigo/CLI001",
+            "field": "IdentificadorCliente",
+            "codigo": "CLI001"
+          }
+        ],
+        "total": 1
+      }
+    },
+    {
+      "step": 6,
+      "name": "Condition_TemValidacao",
+      "type": "Condition",
+      "description": "Verifica se há queries de validação",
+      "parameters": {
+        "condition": "@greater(outputs('Script_BuildValidationQueries').body.result.total, 0)"
+      },
+      "if_yes": [
+        {
+          "step": "6a",
+          "name": "Inicializar_ValidationResults",
+          "type": "InitializeVariable",
+          "parameters": {
+            "name": "ValidationResults",
+            "type": "Array",
+            "value": []
+          }
+        },
+        {
+          "step": "6b",
+          "name": "ApplyToEach_ValidationQuery",
+          "type": "Foreach",
+          "parameters": {
+            "items": "@outputs('Script_BuildValidationQueries').body.result.queries"
+          },
+          "actions": [
+            {
+              "name": "HTTP_ValidationQuery",
+              "type": "HTTP",
+              "parameters": {
+                "method": "@{items('ApplyToEach_ValidationQuery').method}",
+                "uri": "@{concat('https://homologacaowisepcp.alterdata.com.br/BimerApi', items('ApplyToEach_ValidationQuery').endpoint)}",
+                "headers": {
+                  "Authorization": "Bearer @{body('Parse_Token').access_token}",
+                  "Content-Type": "application/json"
+                }
+              }
+            },
+            {
+              "name": "Parse_ValidationResponse",
+              "type": "ParseJson",
+              "parameters": {
+                "content": "@{body('HTTP_ValidationQuery')}"
+              }
+            },
+            {
+              "name": "Switch_ValidationField",
+              "type": "Switch",
+              "description": "Extrai o campo correto da resposta dependendo do tipo",
+              "parameters": {
+                "on": "@{items('ApplyToEach_ValidationQuery').field}",
+                "cases": {
+                  "IdentificadorCliente": {
+                    "actions": [
+                      {
+                        "name": "Append_ClienteResult",
+                        "type": "AppendToArrayVariable",
+                        "parameters": {
+                          "name": "ValidationResults",
+                          "value": {
+                            "sheetRow": "@{items('ApplyToEach_ValidationQuery').sheetRow}",
+                            "field": "IdentificadorCliente",
+                            "value": "@{body('Parse_ValidationResponse').Identificador}",
+                            "nome": "@{body('Parse_ValidationResponse').Nome}"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "IdentificadorFormaPagamento": {
+                    "actions": [
+                      {
+                        "name": "Filter_FormaPagamento",
+                        "type": "Filter",
+                        "description": "Filtra array de formas de pagamento pelo código",
+                        "parameters": {
+                          "from": "@body('Parse_ValidationResponse')",
+                          "where": "@equals(item().Codigo, items('ApplyToEach_ValidationQuery').codigo)"
+                        }
+                      },
+                      {
+                        "name": "Append_FormaPagamentoResult",
+                        "type": "AppendToArrayVariable",
+                        "parameters": {
+                          "name": "ValidationResults",
+                          "value": {
+                            "sheetRow": "@{items('ApplyToEach_ValidationQuery').sheetRow}",
+                            "field": "IdentificadorFormaPagamento",
+                            "value": "@{first(body('Filter_FormaPagamento')).Identificador}"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "default": {
+                    "note": "Implementar outros casos conforme necessário"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "step": "6c",
+          "name": "Script_ApplyValidationResults",
+          "type": "ExcelScript.Run",
+          "description": "Aplica identificadores na planilha",
+          "parameters": {
+            "location": "OneDrive",
+            "file": "/PWC/Planilha.xlsx",
+            "script": "Integrador Completo",
+            "inputs": {
+              "action": "applyValidationResults",
+              "results": "@variables('ValidationResults')"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "step": 7,
+      "name": "Script_BuildPedidos",
+      "type": "ExcelScript.Run",
+      "description": "Gera payloads de pedidos de venda",
+      "parameters": {
+        "location": "OneDrive",
+        "file": "/PWC/Planilha.xlsx",
+        "script": "Integrador Completo",
+        "inputs": {
+          "action": "buildPedidos"
+        }
+      },
+      "output": {
+        "payloads": [
+          {
+            "sheetRow": 3,
+            "tipo": "pedido",
+            "payload": {
+              "CodigoEmpresa": 1,
+              "DataEmissao": "2024-12-24",
+              "IdentificadorOperacao": "00A000000R",
+              "IdentificadorCliente": "00A0000063",
+              "Itens": []
+            }
+          }
+        ],
+        "total": 1
+      }
+    },
+    {
+      "step": 8,
+      "name": "ApplyToEach_Pedido",
+      "type": "Foreach",
+      "description": "Cria cada pedido na API",
+      "parameters": {
+        "items": "@outputs('Script_BuildPedidos').body.result.payloads"
+      },
+      "actions": [
+        {
+          "name": "Condition_PayloadValido",
+          "type": "Condition",
+          "description": "Verifica se o payload não tem erro",
+          "parameters": {
+            "condition": "@equals(items('ApplyToEach_Pedido').error, null)"
+          },
+          "if_yes": [
+            {
+              "name": "HTTP_CriarPedido",
+              "type": "HTTP",
+              "parameters": {
+                "method": "POST",
+                "uri": "https://homologacaowisepcp.alterdata.com.br/BimerApi/api/pedidosVenda",
+                "headers": {
+                  "Authorization": "Bearer @{body('Parse_Token').access_token}",
+                  "Content-Type": "application/json"
+                },
+                "body": "@items('ApplyToEach_Pedido').payload"
+              }
+            },
+            {
+              "name": "Parse_PedidoResponse",
+              "type": "ParseJson",
+              "parameters": {
+                "content": "@{body('HTTP_CriarPedido')}",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "Identificador": { "type": "string" },
+                    "Numero": { "type": "string" }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Append_PedidoSucesso",
+              "type": "AppendToArrayVariable",
+              "parameters": {
+                "name": "ResultadosArray",
+                "value": {
+                  "sheetRow": "@{items('ApplyToEach_Pedido').sheetRow}",
+                  "notaCriada": "@{body('Parse_PedidoResponse').Numero}",
+                  "retorno": "Pedido criado com sucesso. ID: @{body('Parse_PedidoResponse').Identificador}"
+                }
+              }
+            }
+          ],
+          "if_no": [
+            {
+              "name": "Append_PedidoErro",
+              "type": "AppendToArrayVariable",
+              "parameters": {
+                "name": "ResultadosArray",
+                "value": {
+                  "sheetRow": "@{items('ApplyToEach_Pedido').sheetRow}",
+                  "notaCriada": "",
+                  "retorno": "ERRO: @{items('ApplyToEach_Pedido').error}"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": 9,
+      "name": "Script_ApplyResults",
+      "type": "ExcelScript.Run",
+      "description": "Escreve resultados na planilha",
+      "parameters": {
+        "location": "OneDrive",
+        "file": "/PWC/Planilha.xlsx",
+        "script": "Integrador Completo",
+        "inputs": {
+          "action": "applyResults",
+          "results": "@variables('ResultadosArray')"
+        }
+      },
+      "output": {
+        "ok": true,
+        "updated": 2,
+        "message": "2 resultado(s) aplicado(s) na planilha"
+      }
+    },
+    {
+      "step": 10,
+      "name": "Send_Notification",
+      "type": "SendEmail",
+      "description": "Notifica conclusão do processamento",
+      "parameters": {
+        "to": "usuario@empresa.com",
+        "subject": "Integração Concluída - Pedidos de Venda",
+        "body": "O processamento foi concluído.\n\nTotal de pedidos processados: @{outputs('Script_BuildPedidos').body.result.total}\nResultados aplicados: @{outputs('Script_ApplyResults').body.result.updated}\n\nVerifique a planilha para mais detalhes."
+      }
+    }
+  ],
+  "error_handling": {
+    "scope": "Configure Scope",
+    "run_after": {
+      "Configure_Scope": ["Failed", "Skipped", "TimedOut"]
+    },
+    "actions": [
+      {
+        "name": "Send_ErrorNotification",
+        "type": "SendEmail",
+        "parameters": {
+          "to": "usuario@empresa.com",
+          "subject": "ERRO - Integração Pedidos de Venda",
+          "body": "Ocorreu um erro durante o processamento.\n\nDetalhes: @{result('Configure_Scope')}\n\nVerifique o histórico do Flow para mais informações."
+        }
+      }
+    ]
+  },
+  "notes": [
+    "Este é um template básico. Ajuste conforme necessário.",
+    "Configure as conexões do OneDrive e HTTP antes de executar.",
+    "Ajuste o caminho do arquivo Excel conforme sua estrutura.",
+    "Implemente tratamento de erros adicional conforme necessário.",
+    "Considere adicionar logs estruturados para auditoria."
+  ]
+}
