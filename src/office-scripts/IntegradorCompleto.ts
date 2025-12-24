@@ -138,9 +138,19 @@ async function main(workbook: ExcelScript.Workbook, inputs?: { action?: string; 
         validacao: ['buildValidationQueries', 'applyValidationResults'],
         pedidos: ['buildPedidos'],
         documentos: ['buildDocumentos'],
-        resultados: ['applyResults']
+        resultados: ['applyResults'],
+        completo: ['criarDocumentosCompleto']
       },
-      usa0: FLUXO COMPLETO COM FETCH (NOVO)
+      usage: 'Passe inputs.action com uma das ações listadas acima',
+      exemplo: '{ action: "buildPedidos" }'
+    };
+  }
+
+  return { error: `Ação desconhecida: ${action}` };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEÇÃO 0: FLUXO COMPLETO COM FETCH (NOVO)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -190,7 +200,8 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       };
     }
 
-    const authData: { access_token?: string } = await authResponse.json();
+    const authJson = await authResponse.json();
+    const authData = authJson as { access_token?: string };
     const token = authData.access_token;
 
     if (!token) {
@@ -252,7 +263,8 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
         });
 
         if (response.ok) {
-          const responseData: { Identificador?: string } = await response.json();
+          const responseJson = await response.json();
+          const responseData = responseJson as { Identificador?: string };
           const identificador = responseData.Identificador || 'OK';
           
           results.push({
@@ -311,15 +323,6 @@ async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: { 
       detalhes: errorMsg 
     };
   }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SEÇÃO ge: 'Passe inputs.action com uma das ações listadas acima',
-      exemplo: '{ action: "buildPedidos" }'
-    };
-  }
-
-  return { error: `Ação desconhecida: ${action}` };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
