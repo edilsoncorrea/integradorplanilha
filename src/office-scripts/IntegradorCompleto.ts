@@ -96,148 +96,19 @@ const NotaCriada = 21;
 const RetornoAPI = 22;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TIPOS DE RETORNO E PARÂMETROS
+// PONTO DE ENTRADA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Inputs aceitos pelo Script
-interface ScriptInputs {
+async function main(workbook: ExcelScript.Workbook, inputs?: {
   action?: string;
   host?: string;
   username?: string;
   senha?: string;
   nonce?: string;
   value?: string;
-  results?: object[];
+  results?: unknown[];
   executeAPI?: boolean;
-}
-
-// Resultados de validação aplicados na planilha
-interface ValidationResult {
-  sheetRow: number;
-  field: string;
-  value: string;
-  nome?: string;
-}
-
-// Resultados de aplicação (resposta da API aplicada)
-interface ApplyResult {
-  sheetRow: number;
-  notaCriada?: string;
-  retorno?: string;
-}
-
-// Formato de erro genérico
-interface ErrorResult { error: string }
-
-// Resultado da ação de ajuda
-interface HelpResult {
-  message: string;
-  actions: {
-    autenticacao: string[];
-    validacao: string[];
-    pedidos: string[];
-    documentos: string[];
-    resultados: string[];
-  };
-  usage: string;
-  exemplo: string;
-  importante: string;
-}
-
-// Resultado da autenticação
-interface AuthPayloadResult {
-  url: string;
-  method: 'POST';
-  payload: {
-    client_id: string;
-    username: string;
-    password: string;
-    grant_type: string;
-    nonce: string;
-  };
-  note: string;
-}
-
-// Resultado do cálculo de hash
-interface HashResult { md5: string }
-
-// Item de consulta para validação
-interface QueryItem {
-  sheetRow: number;
-  method: string;
-  endpoint: string;
-  field: string;
-  codigo: string | number;
-}
-
-// Resultado de consultas de validação
-interface ValidationQueriesResult {
-  queries: QueryItem[];
-  total: number;
-  note: string;
-}
-
-// Item de payload de pedido
-interface PedidoItem {
-  sheetRow: number;
-  error?: string;
-  payload: { [key: string]: unknown };
-  tipo?: string;
-}
-
-// Resultado da criação de pedidos
-interface BuildPedidosResult {
-  payloads: PedidoItem[];
-  total: number;
-  note: string;
-}
-
-// Item de payload de documento
-interface DocumentoItem {
-  sheetRow: number;
-  error?: string;
-  payload: { [key: string]: unknown };
-  tipo?: string;
-}
-
-// Resultado da criação de documentos
-interface BuildDocumentosResult {
-  payloads: DocumentoItem[];
-  total: number;
-  note: string;
-}
-
-// Resultado de aplicação de validação
-interface ApplyValidationResultsResult {
-  ok: boolean;
-  updated: number;
-  message: string;
-}
-
-// Resultado de aplicar respostas da API
-interface ApplyResultsResult {
-  ok: boolean;
-  updated: number;
-  message: string;
-}
-
-// Tipo de retorno principal (união das ações)
-type MainReturn =
-  | HelpResult
-  | ErrorResult
-  | AuthPayloadResult
-  | HashResult
-  | ValidationQueriesResult
-  | ApplyValidationResultsResult
-  | BuildPedidosResult
-  | BuildDocumentosResult
-  | ApplyResultsResult;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PONTO DE ENTRADA PRINCIPAL
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Promise<object> {
+}): Promise<unknown> {
   const action = inputs?.action || 'buildDocumentos';
 
   // NOTA: Office Scripts NÃO suporta fetch() ou chamadas HTTP diretas
@@ -262,7 +133,7 @@ async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Prom
 
   // AJUDA
   if (action === 'help') {
-    const help: HelpResult = {
+    const help = {
       message: 'INTEGRADOR COMPLETO - Office Scripts para Excel Online',
       actions: {
         autenticacao: ['buildAuthPayload', 'hash'],
@@ -285,7 +156,7 @@ async function main(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): Prom
 // SEÇÃO 1: AUTENTICAÇÃO
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: string; nonce?: string }): AuthPayloadResult {
+function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: string; nonce?: string }) {
   const host = (inputs?.host as string) || HOST;
   const username = (inputs?.username as string) || 'supervisor';
   const senha = (inputs?.senha as string) || 'Senhas123';
@@ -311,7 +182,7 @@ function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: s
   };
 }
 
-function hashValue(inputs?: { value?: string }): HashResult {
+function hashValue(inputs?: { value?: string }) {
   const value = (inputs?.value as string) || '';
   return { md5: md5(value) };
 }
@@ -320,7 +191,7 @@ function hashValue(inputs?: { value?: string }): HashResult {
 // SEÇÃO 2: VALIDAÇÃO DA PLANILHA
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildValidationQueries(workbook: ExcelScript.Workbook): ValidationQueriesResult | ErrorResult {
+function buildValidationQueries(workbook: ExcelScript.Workbook) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -415,14 +286,16 @@ function buildValidationQueries(workbook: ExcelScript.Workbook): ValidationQueri
   };
 }
 
-function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ApplyValidationResultsResult | ErrorResult {
+function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: unknown) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = (inputs?.results as ValidationResult[]) || [];
+  const inputsObj = inputs as { results?: unknown[] };
+  const results = (inputsObj?.results || []) as unknown[];
   let updated = 0;
 
-  for (const res of results) {
+  for (const resultItem of results) {
+    const res = resultItem as { sheetRow?: number; field?: string; value?: string; nome?: string };
     const row = res.sheetRow;
     if (!row || row < 1) continue;
 
@@ -461,7 +334,7 @@ function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: ScriptI
 // SEÇÃO 3: CRIAÇÃO DE PEDIDOS DE VENDA
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildPedidos(workbook: ExcelScript.Workbook): BuildPedidosResult | ErrorResult {
+function buildPedidos(workbook: ExcelScript.Workbook) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -469,7 +342,7 @@ function buildPedidos(workbook: ExcelScript.Workbook): BuildPedidosResult | Erro
   if (!used) return { payloads: [], total: 0, note: 'Nenhuma área usada na planilha. Sem pedidos a gerar.' };
   const values = used.getValues();
 
-  const payloads: PedidoItem[] = [];
+  const payloads: unknown[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -558,7 +431,7 @@ function buildPedidos(workbook: ExcelScript.Workbook): BuildPedidosResult | Erro
 // SEÇÃO 4: CRIAÇÃO DE DOCUMENTOS FISCAIS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildDocumentos(workbook: ExcelScript.Workbook): BuildDocumentosResult | ErrorResult {
+function buildDocumentos(workbook: ExcelScript.Workbook) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
@@ -566,7 +439,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook): BuildDocumentosResult 
   if (!used) return { payloads: [], total: 0, note: 'Nenhuma área usada na planilha. Sem documentos a gerar.' };
   const values = used.getValues();
 
-  const payloads: DocumentoItem[] = [];
+  const payloads: unknown[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -645,14 +518,16 @@ function buildDocumentos(workbook: ExcelScript.Workbook): BuildDocumentosResult 
 // SEÇÃO 5: APLICAR RESULTADOS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function applyResults(workbook: ExcelScript.Workbook, inputs?: ScriptInputs): ApplyResultsResult | ErrorResult {
+function applyResults(workbook: ExcelScript.Workbook, inputs?: unknown) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const results = (inputs?.results as ApplyResult[]) || [];
+  const inputsObj = inputs as { results?: unknown[] };
+  const results = (inputsObj?.results || []) as unknown[];
   let updated = 0;
 
-  for (const res of results) {
+  for (const resultItem of results) {
+    const res = resultItem as { sheetRow?: number; notaCriada?: string; retorno?: unknown };
     const row = res.sheetRow;
     if (!row || row < 1) continue;
 
