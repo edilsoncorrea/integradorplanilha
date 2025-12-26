@@ -14,18 +14,28 @@
  * 3. PEDIDOS: Cria payloads de pedidos de venda a partir dos dados da planilha
  * 4. DOCUMENTOS: Cria payloads de documentos fiscais a partir dos dados
  * 5. RESULTADOS: Aplica resultados das APIs de volta na planilha
+ * 6. ⭐ EXECUÇÃO COMPLETA: Executa todo o fluxo com chamadas HTTP diretas
  * 
- * IMPORTANTE:
+ * NOVO - EXECUÇÃO DIRETA:
  * ────────────────────────────────────────────────────────────────────────────
- * Este script NÃO faz chamadas HTTP diretamente. As chamadas à API devem ser
- * feitas pelo Power Automate, que:
- *   1. Chama este script para gerar payloads
- *   2. Executa as requisições HTTP na API Bimer
- *   3. Chama este script novamente para aplicar os resultados na planilha
+ * Este script AGORA FAZ chamadas HTTP diretamente usando fetch()!
+ * Use action='executarCompleto' para processar toda a planilha automaticamente:
+ *   1. Autentica na API Bimer
+ *   2. Valida e busca identificadores faltantes
+ *   3. Cria documentos via API
+ *   4. Atualiza resultados na planilha
  * 
- * USO:
+ * USO SIMPLIFICADO (RECOMENDADO):
  * ────────────────────────────────────────────────────────────────────────────
- * Use o parâmetro 'action' em inputs para escolher a operação:
+ * Basta executar o script sem parâmetros ou com:
+ *   { action: 'executarCompleto' }
+ * 
+ * O script processará automaticamente todas as linhas da planilha que ainda
+ * não têm "Nota Criada" preenchida.
+ * 
+ * USO AVANÇADO (Para Power Automate):
+ * ────────────────────────────────────────────────────────────────────────────
+ * Use o parâmetro 'action' em inputs para escolher operações específicas:
  * 
  * AUTENTICAÇÃO:
  *   - action: 'buildAuthPayload' -> Gera URL e payload para obter token
@@ -44,23 +54,49 @@
  * RESULTADOS:
  *   - action: 'applyResults' -> Escreve resultados na planilha
  * 
- * EXEMPLO DE USO NO POWER AUTOMATE:
+ * CONFIGURAÇÃO:
  * ────────────────────────────────────────────────────────────────────────────
+ * Credenciais padrão (altere se necessário):
+ *   - Host: https://homologacaowisepcp.alterdata.com.br/BimerApi
+ *   - Username: supervisor
+ *   - Senha: Senhas123
  * 
- * Passo 1: Autenticar
- *   Script: action = 'buildAuthPayload'
- *   HTTP POST: Usa URL e payload retornados
- *   Salva: access_token para próximas chamadas
+ * Para usar credenciais diferentes, passe nos inputs:
+ *   { 
+ *     action: 'executarCompleto',
+ *     host: 'sua-url',
+ *     username: 'seu-usuario',
+ *     senha: 'sua-senha'
+ *   }
  * 
- * Passo 2: Validar planilha
- *   Script: action = 'buildValidationQueries'
- *   HTTP GET: Para cada query retornada
- *   Script: action = 'applyValidationResults' com resultados
- * 
- * Passo 3: Criar pedidos/documentos
- *   Script: action = 'buildPedidos' OU 'buildDocumentos'
- *   HTTP POST: Para cada payload retornado
- *   Script: action = 'applyResults' com respostas da API
+ * ESTRUTURA DA PLANILHA:
+ * ────────────────────────────────────────────────────────────────────────────
+ * Nome da aba: "Documento"
+ * Colunas esperadas (índice 0-based):
+ *   0:  Código da Empresa
+ *   1:  Código Cliente
+ *   2:  Nome do Cliente
+ *   3:  Identificador Cliente (preenchido automaticamente se vazio)
+ *   4:  Código da Operação
+ *   5:  Identificador Operação (preenchido automaticamente se vazio)
+ *   6:  CFOP
+ *   7:  Código do Serviço
+ *   8:  Identificador Serviço (preenchido automaticamente se vazio)
+ *   9:  Nome do Serviço
+ *   10: Quantidade
+ *   11: Valor
+ *   12: Discriminação 1
+ *   13: Discriminação 2
+ *   14: Código Prazo
+ *   15: Identificador Prazo
+ *   16: Forma Pagamento Entrada
+ *   17: Código da Forma de Pagamento
+ *   18: Identificador Forma Pagamento (preenchido automaticamente se vazio)
+ *   19: Data Emissão
+ *   20: Vencimento Fatura
+ *   21: Nota Criada (✅ preenchido pelo script: "Sim" ou "Não")
+ *   22: Retorno API (✅ preenchido pelo script: identificador ou mensagem erro)
+ *   23: Log de Execução (✅ preenchido pelo script: detalhes do processamento)
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -94,6 +130,73 @@ const DataEmissao = 19;
 const VencimentoFatura = 20; 
 const NotaCriada = 21;
 const RetornoAPI = 22;
+const LogExecucao = 23;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FUNÇÕES DE LOGGING E DEBUG
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface LogEntry {
+  timestamp: string;
+  nivel: 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG';
+  mensagem: string;
+  contexto?: string;
+}
+
+class Logger {
+  private logs: LogEntry[] = [];
+  private habilitarConsole: boolean = true;
+
+  constructor(habilitarConsole: boolean = true) {
+    this.habilitarConsole = habilitarConsole;
+  }
+
+  private formatTimestamp(): string {
+    const now = new Date();
+    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+  }
+
+  log(nivel: 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG', mensagem: string, contexto?: string) {
+    const entry: LogEntry = {
+      timestamp: this.formatTimestamp(),
+      nivel,
+      mensagem,
+      contexto
+    };
+
+    this.logs.push(entry);
+
+    if (this.habilitarConsole) {
+      const emoji = nivel === 'INFO' ? 'ℹ️' : nivel === 'WARNING' ? '⚠️' : nivel === 'ERROR' ? '❌' : '🔍';
+      const msg = contexto ? `[${entry.timestamp}] ${emoji} ${nivel}: ${mensagem} (${contexto})` : `[${entry.timestamp}] ${emoji} ${nivel}: ${mensagem}`;
+      console.log(msg);
+    }
+  }
+
+  info(mensagem: string, contexto?: string) {
+    this.log('INFO', mensagem, contexto);
+  }
+
+  warning(mensagem: string, contexto?: string) {
+    this.log('WARNING', mensagem, contexto);
+  }
+
+  error(mensagem: string, contexto?: string) {
+    this.log('ERROR', mensagem, contexto);
+  }
+
+  debug(mensagem: string, contexto?: string) {
+    this.log('DEBUG', mensagem, contexto);
+  }
+
+  getLogs(): LogEntry[] {
+    return this.logs;
+  }
+
+  getLogsFormatted(): string {
+    return this.logs.map(l => `[${l.timestamp}] ${l.nivel}: ${l.mensagem}${l.contexto ? ' (' + l.contexto + ')' : ''}`).join('\n');
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PONTO DE ENTRADA PRINCIPAL
@@ -106,13 +209,13 @@ async function main(workbook: ExcelScript.Workbook, inputs?: {
   senha?: string;
   nonce?: string;
   value?: string;
-  results?: unknown[];
+  results?: object[];
   executeAPI?: boolean;
-}): Promise<unknown> {
-  const action = inputs?.action || 'buildDocumentos';
+}) {
+  const action = inputs?.action || 'executarCompleto';
 
-  // NOTA: Office Scripts NÃO suporta fetch() ou chamadas HTTP diretas
-  // Use Power Automate para executar as requisições HTTP
+  // EXECUÇÃO COMPLETA COM API
+  if (action === 'executarCompleto') return await executarFluxoCompleto(workbook, inputs);
 
   // AUTENTICAÇÃO
   if (action === 'buildAuthPayload') return buildAuthPayload(inputs);
@@ -136,6 +239,7 @@ async function main(workbook: ExcelScript.Workbook, inputs?: {
     const help = {
       message: 'INTEGRADOR COMPLETO - Office Scripts para Excel Online',
       actions: {
+        execucao: ['executarCompleto - Executa fluxo completo com chamadas HTTP'],
         autenticacao: ['buildAuthPayload', 'hash'],
         validacao: ['buildValidationQueries', 'applyValidationResults'],
         pedidos: ['buildPedidos'],
@@ -143,8 +247,8 @@ async function main(workbook: ExcelScript.Workbook, inputs?: {
         resultados: ['applyResults']
       },
       usage: 'Passe inputs.action com uma das ações listadas acima',
-      exemplo: '{ action: "buildPedidos" }',
-      importante: 'Office Scripts NÃO suporta fetch(). Use Power Automate para chamadas HTTP.'
+      exemplo: '{ action: "executarCompleto" }',
+      recomendado: 'Use action="executarCompleto" para processar tudo automaticamente'
     };
     return help;
   }
@@ -185,6 +289,491 @@ function buildAuthPayload(inputs?: { host?: string; username?: string; senha?: s
 function hashValue(inputs?: { value?: string }) {
   const value = (inputs?.value as string) || '';
   return { md5: md5(value) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEÇÃO 1B: EXECUÇÃO COMPLETA COM CHAMADAS HTTP
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function executarFluxoCompleto(workbook: ExcelScript.Workbook, inputs?: {
+  host?: string;
+  username?: string;
+  senha?: string;
+  nonce?: string;
+}) {
+  const logger = new Logger(true);
+  const host = (inputs?.host as string) || HOST;
+  const username = (inputs?.username as string) || 'supervisor';
+  const senha = (inputs?.senha as string) || 'Senhas123';
+
+  let totalProcessados = 0;
+  let totalSucesso = 0;
+  let totalErro = 0;
+
+  try {
+    logger.info('═══════════════════════════════════════════════════════');
+    logger.info('INICIANDO EXECUÇÃO COMPLETA DO INTEGRADOR BIMER');
+    logger.info('═══════════════════════════════════════════════════════');
+    logger.debug(`Host: ${host}`);
+    logger.debug(`Usuário: ${username}`);
+
+    // 1. AUTENTICAR
+    logger.info('🔐 Iniciando autenticação na API Bimer...');
+    const inicioAuth = Date.now();
+    const token = await autenticarAPI(host, username, senha, logger);
+    const tempoAuth = Date.now() - inicioAuth;
+    logger.info(`✅ Token obtido com sucesso em ${tempoAuth}ms`);
+    logger.debug(`Token (primeiros 20 chars): ${token.substring(0, 20)}...`);
+
+    // 2. VALIDAR PLANILHA (buscar identificadores faltantes)
+    logger.info('🔍 Iniciando validação de identificadores na planilha...');
+    const inicioValidacao = Date.now();
+    const validados = await validarPlanilha(workbook, token, host, logger);
+    const tempoValidacao = Date.now() - inicioValidacao;
+    logger.info(`✅ ${validados} identificador(es) validado(s) em ${tempoValidacao}ms`);
+
+    // 3. CRIAR DOCUMENTOS
+    logger.info('📄 Iniciando criação de documentos na API...');
+    const inicioDocumentos = Date.now();
+    const resultados = await criarDocumentosAPI(workbook, token, host, logger);
+    const tempoDocumentos = Date.now() - inicioDocumentos;
+    
+    totalProcessados = resultados.length;
+    totalSucesso = resultados.filter(r => r.sucesso).length;
+    totalErro = resultados.filter(r => !r.sucesso).length;
+
+    logger.info(`✅ ${totalSucesso} documento(s) criado(s) em ${tempoDocumentos}ms`);
+    if (totalErro > 0) logger.warning(`${totalErro} erro(s) encontrado(s)`);
+
+    const tempoTotal = tempoAuth + tempoValidacao + tempoDocumentos;
+    logger.info('═══════════════════════════════════════════════════════');
+    logger.info(`PROCESSO CONCLUÍDO: ${totalSucesso}/${totalProcessados} documentos criados`);
+    logger.info(`Tempo total de execução: ${tempoTotal}ms`);
+    logger.info('═══════════════════════════════════════════════════════');
+
+    return {
+      sucesso: true,
+      totalProcessados,
+      totalSucesso,
+      totalErro,
+      tempoExecucao: tempoTotal,
+      logs: logger.getLogs(),
+      logFormatado: logger.getLogsFormatted(),
+      mensagem: `Processo concluído: ${totalSucesso}/${totalProcessados} documentos criados em ${tempoTotal}ms`
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`ERRO FATAL: ${errorMessage}`);
+    
+    // Diagnóstico adicional para erros de fetch
+    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('Falha na conexão')) {
+      logger.error('POSSÍVEIS CAUSAS:');
+      logger.error('1. API Bimer está fora do ar ou inacessível');
+      logger.error('2. URL da API está incorreta');
+      logger.error('3. Problema de firewall ou rede');
+      logger.error('4. Política CORS bloqueando requisição do Office Scripts');
+      logger.error('SOLUÇÃO: Teste a URL no navegador: https://homologacaowisepcp.alterdata.com.br/BimerApi/oauth/token');
+    }
+    
+    return {
+      sucesso: false,
+      erro: errorMessage,
+      logs: logger.getLogs(),
+      logFormatado: logger.getLogsFormatted()
+    };
+  }
+}
+
+async function autenticarAPI(host: string, username: string, senha: string, logger?: Logger): Promise<string> {
+  const nonce = Date.now().toString();
+  const password = md5(username + nonce + senha);
+
+  if (logger) {
+    logger.debug(`Nonce gerado: ${nonce}`);
+    logger.debug(`Hash MD5 calculado`);
+  }
+
+  const params = new URLSearchParams({
+    client_id: 'IntegracaoBimer.js',
+    username: username,
+    password: password,
+    grant_type: 'password',
+    nonce: nonce
+  });
+
+  const url = host.endsWith('/') ? `${host}oauth/token` : `${host}/oauth/token`;
+  
+  if (logger) logger.debug(`URL de autenticação: ${url}`);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString()
+    });
+  } catch (fetchError) {
+    const errorMsg = `Falha na conexão com a API. Verifique: 1) URL está correta? 2) API está acessível? 3) Sem bloqueio de CORS? Erro: ${fetchError}`;
+    if (logger) logger.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  if (logger) logger.debug(`Status da resposta: ${response.status}`);
+
+  if (!response.ok) {
+    const errorMsg = `Erro na autenticação: ${response.status} ${response.statusText}`;
+    if (logger) logger.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  const data: { access_token: string } = await response.json() as { access_token: string };
+  if (logger) logger.debug('Token de acesso recebido com sucesso');
+  return data.access_token;
+}
+
+async function validarPlanilha(workbook: ExcelScript.Workbook, token: string, host: string, logger?: Logger): Promise<number> {
+  const sheet = workbook.getWorksheet('Documento');
+  if (!sheet) {
+    const erro = 'Planilha "Documento" não encontrada';
+    if (logger) logger.error(erro);
+    throw new Error(erro);
+  }
+
+  const used = sheet.getUsedRange();
+  if (!used) {
+    if (logger) logger.warning('Nenhuma área usada na planilha');
+    return 0;
+  }
+
+  const values = used.getValues();
+  if (logger) logger.debug(`Total de linhas na planilha: ${values.length}`);
+  let validados = 0;
+
+  for (let i = 2; i < values.length; i++) {
+    const row = values[i];
+    const notaCriada = row[NotaCriada];
+
+    // Pula linhas já processadas
+    if (notaCriada && String(notaCriada).trim() !== '') continue;
+
+    // Validar Cliente
+    if (!row[IdentificadorCliente] || String(row[IdentificadorCliente]).trim() === '') {
+      const codigoCliente = row[CodigoCliente];
+      if (codigoCliente && typeof codigoCliente !== 'boolean') {
+        // Try-catch necessário: continua processamento mesmo com erro em linha específica
+        try {
+          if (logger) logger.debug(`Buscando cliente código ${codigoCliente}`, `Linha ${i + 1}`);
+          const cliente: { Identificador: string; Nome: string } = await buscarPessoaPorCodigo(host, token, String(codigoCliente)) as { Identificador: string; Nome: string };
+          sheet.getRangeByIndexes(i, IdentificadorCliente, 1, 1).setValue(cliente.Identificador);
+          sheet.getRangeByIndexes(i, NomeDoCliente, 1, 1).setValue(cliente.Nome || '');
+          validados++;
+          if (logger) logger.info(`Cliente ${codigoCliente} encontrado: ${cliente.Nome}`, `Linha ${i + 1}`);
+        } catch (error) {
+          if (logger) logger.error(`Erro ao buscar cliente ${codigoCliente}: ${error}`, `Linha ${i + 1}`);
+        }
+      }
+    }
+
+    // Validar Forma de Pagamento
+    if (!row[IdentificadorFormaPagamento] || String(row[IdentificadorFormaPagamento]).trim() === '') {
+      const codigoFormaPagamento = row[CodigoDaFormaDePagamento];
+      if (codigoFormaPagamento && typeof codigoFormaPagamento !== 'boolean') {
+        // Try-catch necessário: continua processamento mesmo com erro em linha específica
+        try {
+          if (logger) logger.debug(`Buscando forma de pagamento código ${codigoFormaPagamento}`, `Linha ${i + 1}`);
+          const formas: { Codigo: string | number; Identificador: string }[] = await buscarFormasPagamento(host, token) as { Codigo: string | number; Identificador: string }[];
+          const forma: { Codigo: string | number; Identificador: string } | undefined = formas.find((f: { Codigo: string | number | boolean }) => 
+            String(f.Codigo) === String(codigoFormaPagamento)
+          );
+          if (forma) {
+            sheet.getRangeByIndexes(i, IdentificadorFormaPagamento, 1, 1).setValue(forma.Identificador);
+            validados++;
+            if (logger) logger.info(`Forma de pagamento ${codigoFormaPagamento} encontrada`, `Linha ${i + 1}`);
+          } else {
+            if (logger) logger.warning(`Forma de pagamento ${codigoFormaPagamento} não encontrada`, `Linha ${i + 1}`);
+          }
+        } catch (error) {
+          if (logger) logger.error(`Erro ao buscar forma de pagamento: ${error}`, `Linha ${i + 1}`);
+        }
+      }
+    }
+
+    // Validar Operação
+    if (!row[IdentificadorOperacao] || String(row[IdentificadorOperacao]).trim() === '') {
+      const codigoOperacao = row[CodigoDaOperacao];
+      if (codigoOperacao && typeof codigoOperacao !== 'boolean') {
+        // Try-catch necessário: continua processamento mesmo com erro em linha específica
+        try {
+          if (logger) logger.debug(`Buscando operação código ${codigoOperacao}`, `Linha ${i + 1}`);
+          const operacoes: { Codigo: string | number; Identificador: string }[] = await buscarOperacoes(host, token) as { Codigo: string | number; Identificador: string }[];
+          const operacao: { Codigo: string | number; Identificador: string } | undefined = operacoes.find((o: { Codigo: string | number | boolean }) => 
+            String(o.Codigo) === String(codigoOperacao)
+          );
+          if (operacao) {
+            sheet.getRangeByIndexes(i, IdentificadorOperacao, 1, 1).setValue(operacao.Identificador);
+            validados++;
+            if (logger) logger.info(`Operação ${codigoOperacao} encontrada`, `Linha ${i + 1}`);
+          } else {
+            if (logger) logger.warning(`Operação ${codigoOperacao} não encontrada`, `Linha ${i + 1}`);
+          }
+        } catch (error) {
+          if (logger) logger.error(`Erro ao buscar operação: ${error}`, `Linha ${i + 1}`);
+        }
+      }
+    }
+
+    // Validar Produto/Serviço
+    if (!row[IdentificadorServico] || String(row[IdentificadorServico]).trim() === '') {
+      const codigoServico = row[CodigoDoServico];
+      if (codigoServico && typeof codigoServico !== 'boolean') {
+        // Try-catch necessário: continua processamento mesmo com erro em linha específica
+        try {
+          if (logger) logger.debug(`Buscando produto código ${codigoServico}`, `Linha ${i + 1}`);
+          const produtos: { Identificador: string }[] = await buscarProdutos(host, token, String(codigoServico)) as { Identificador: string }[];
+          if (produtos.length > 0) {
+            sheet.getRangeByIndexes(i, IdentificadorServico, 1, 1).setValue(produtos[0].Identificador);
+            validados++;
+            if (logger) logger.info(`Produto ${codigoServico} encontrado`, `Linha ${i + 1}`);
+          } else {
+            if (logger) logger.warning(`Produto ${codigoServico} não encontrado`, `Linha ${i + 1}`);
+          }
+        } catch (error) {
+          if (logger) logger.error(`Erro ao buscar produto: ${error}`, `Linha ${i + 1}`);
+        }
+      }
+    }
+  }
+
+  return validados;
+}
+
+async function criarDocumentosAPI(workbook: ExcelScript.Workbook, token: string, host: string, logger?: Logger) {
+  const sheet = workbook.getWorksheet('Documento');
+  if (!sheet) {
+    const erro = 'Planilha "Documento" não encontrada';
+    if (logger) logger.error(erro);
+    throw new Error(erro);
+  }
+
+  const used = sheet.getUsedRange();
+  if (!used) {
+    if (logger) logger.warning('Nenhuma área usada na planilha');
+    return [];
+  }
+
+  const values = used.getValues();
+  const resultados: { linha: number; sucesso: boolean; mensagem: string }[] = [];
+  let processadas = 0;
+
+  if (logger) logger.debug(`Processando ${values.length - 2} linha(s) de dados`);
+
+  for (let i = 2; i < values.length; i++) {
+    processadas++;
+    const row = values[i];
+    const notaCriada = row[NotaCriada];
+
+    // Pula linhas já processadas
+    if (notaCriada && String(notaCriada).trim() !== '') {
+      if (logger) logger.debug(`Linha ${i + 1} já processada, pulando`);
+      continue;
+    }
+
+    if (logger) logger.info(`Processando linha ${i + 1}...`);
+
+    // Validar campos obrigatórios
+    if (!row[IdentificadorCliente] || !row[IdentificadorOperacao] || !row[IdentificadorServico]) {
+      const erro = 'Campos obrigatórios faltando (Cliente, Operação ou Serviço)';
+      if (logger) logger.error(erro, `Linha ${i + 1}`);
+      sheet.getRangeByIndexes(i, NotaCriada, 1, 1).setValue('Não');
+      sheet.getRangeByIndexes(i, RetornoAPI, 1, 1).setValue(erro);
+      sheet.getRangeByIndexes(i, LogExecucao, 1, 1).setValue(`[ERRO] ${erro}`);
+      resultados.push({ linha: i + 1, sucesso: false, mensagem: erro });
+      continue;
+    }
+
+    // Construir payload
+    if (logger) logger.debug(`Construindo payload do documento`, `Linha ${i + 1}`);
+    const valorString = String(row[Valor]);
+    const valorNumerico = parseValor(valorString);
+    const valorFormatado = formatCurrency(valorNumerico);
+
+    if (logger) logger.debug(`Valor: ${valorFormatado} (${valorNumerico})`, `Linha ${i + 1}`);
+
+    const observacao = 
+      `${row[NomeDoServico]} (${row[Quantidade]} X ${valorFormatado}) - ${valorNumerico}\n\n\n` +
+      `${row[Descriminacao1]}\n\n${row[Descriminacao2]}` +
+      `\n\n Data Vencimento: ${row[VencimentoFatura]}`;
+
+    const payload = {
+      StatusNotaFiscalEletronica: 'A',
+      TipoDocumento: 'S',
+      TipoPagamento: '0',
+      CodigoEmpresa: row[CodigoDaEmpresa],
+      DataEmissao: row[DataEmissao],
+      DataReferencia: row[DataEmissao],
+      DataReferenciaPagamento: row[DataEmissao],
+      IdentificadorOperacao: row[IdentificadorOperacao],
+      IdentificadorPessoa: row[IdentificadorCliente],
+      Observacao: observacao,
+      Itens: [
+        {
+          CFOP: row[CFOP],
+          IdentificadorProduto: row[IdentificadorServico],
+          Quantidade: row[Quantidade],
+          ValorUnitario: valorNumerico
+        }
+      ],
+      Pagamentos: [
+        {
+          Aliquota: 100,
+          AliquotaConvenio: 10,
+          DataVencimento: row[DataEmissao],
+          IdentificadorFormaPagamento: row[IdentificadorFormaPagamento],
+          Valor: valorNumerico
+        }
+      ]
+    };
+
+    // Criar documento via API
+    // Try-catch necessário: captura erros de API e continua processando outras linhas
+    try {
+      const url = host.endsWith('/') ? `${host}api/documentos` : `${host}/api/documentos`;
+      if (logger) logger.debug(`POST para ${url}`, `Linha ${i + 1}`);
+      
+      const inicioReq = Date.now();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const tempoReq = Date.now() - inicioReq;
+
+      if (logger) logger.debug(`Resposta recebida em ${tempoReq}ms - Status: ${response.status}`, `Linha ${i + 1}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`${response.status}: ${errorText}`);
+      }
+
+      const data: { ListaObjetos?: { Identificador: string }[] } = await response.json() as { ListaObjetos?: { Identificador: string }[] };
+      const identificador: string = data.ListaObjetos?.[0]?.Identificador || 'Criado';
+
+      if (logger) logger.info(`✅ Documento criado: ${identificador}`, `Linha ${i + 1}`);
+
+      sheet.getRangeByIndexes(i, NotaCriada, 1, 1).setValue('Sim');
+      sheet.getRangeByIndexes(i, RetornoAPI, 1, 1).setValue(identificador);
+      sheet.getRangeByIndexes(i, LogExecucao, 1, 1).setValue(`[OK] Criado em ${tempoReq}ms - ID: ${identificador}`);
+      
+      resultados.push({ linha: i + 1, sucesso: true, mensagem: identificador });
+
+    } catch (error) {
+      const mensagemErro = String(error);
+      if (logger) logger.error(`❌ Falha ao criar documento: ${mensagemErro}`, `Linha ${i + 1}`);
+      
+      sheet.getRangeByIndexes(i, NotaCriada, 1, 1).setValue('Não');
+      sheet.getRangeByIndexes(i, RetornoAPI, 1, 1).setValue(mensagemErro);
+      sheet.getRangeByIndexes(i, LogExecucao, 1, 1).setValue(`[ERRO] ${mensagemErro}`);
+      
+      resultados.push({ linha: i + 1, sucesso: false, mensagem: mensagemErro });
+    }
+  }
+
+  if (logger) logger.info(`Total processado: ${processadas} linha(s)`);
+
+  return resultados;
+}
+
+// Funções auxiliares de API
+
+async function buscarPessoaPorCodigo(host: string, token: string, codigo: string): Promise<{ Identificador: string; Nome: string }> {
+  const url = host.endsWith('/') 
+    ? `${host}api/pessoas/codigo/${codigo}` 
+    : `${host}/api/pessoas/codigo/${codigo}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (error) {
+    throw new Error(`Falha na conexão ao buscar pessoa: ${error}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Erro ao buscar pessoa: ${response.status}`);
+  }
+
+  return await response.json() as { Identificador: string; Nome: string };
+}
+
+async function buscarFormasPagamento(host: string, token: string): Promise<{ Codigo: string | number; Identificador: string }[]> {
+  const url = host.endsWith('/') 
+    ? `${host}api/formasPagamento` 
+    : `${host}/api/formasPagamento`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Erro ao buscar formas de pagamento: ${response.status}`);
+  }
+
+  return await response.json() as { Codigo: string | number; Identificador: string }[];
+}
+
+async function buscarOperacoes(host: string, token: string): Promise<{ Codigo: string | number; Identificador: string }[]> {
+  const url = host.endsWith('/') 
+    ? `${host}api/operacoes` 
+    : `${host}/api/operacoes`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Erro ao buscar operações: ${response.status}`);
+  }
+
+  return await response.json() as { Codigo: string | number; Identificador: string }[];
+}
+
+async function buscarProdutos(host: string, token: string, codigo: string): Promise<{ Identificador: string }[]> {
+  const url = host.endsWith('/') 
+    ? `${host}api/produtos?codigo=${codigo}` 
+    : `${host}/api/produtos?codigo=${codigo}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Erro ao buscar produtos: ${response.status}`);
+  }
+
+  return await response.json() as { Identificador: string }[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -286,12 +875,12 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
   };
 }
 
-function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: unknown) {
+function applyValidationResults(workbook: ExcelScript.Workbook, inputs?: object) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const inputsObj = inputs as { results?: unknown[] };
-  const results = (inputsObj?.results || []) as unknown[];
+  const inputsObj = inputs as { results?: object[] };
+  const results = (inputsObj?.results || []);
   let updated = 0;
 
   for (const resultItem of results) {
@@ -342,7 +931,7 @@ function buildPedidos(workbook: ExcelScript.Workbook) {
   if (!used) return { payloads: [], total: 0, note: 'Nenhuma área usada na planilha. Sem pedidos a gerar.' };
   const values = used.getValues();
 
-  const payloads: unknown[] = [];
+  const payloads: { sheetRow: number; error?: string; payload: object; tipo?: string }[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -439,7 +1028,7 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
   if (!used) return { payloads: [], total: 0, note: 'Nenhuma área usada na planilha. Sem documentos a gerar.' };
   const values = used.getValues();
 
-  const payloads: unknown[] = [];
+  const payloads: { sheetRow: number; error?: string; payload: object; tipo?: string }[] = [];
 
   for (let i = 2; i < values.length; i++) {
     const row = values[i];
@@ -518,12 +1107,12 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
 // SEÇÃO 5: APLICAR RESULTADOS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function applyResults(workbook: ExcelScript.Workbook, inputs?: unknown) {
+function applyResults(workbook: ExcelScript.Workbook, inputs?: object) {
   const sheet = workbook.getWorksheet('Documento');
   if (!sheet) return { error: 'Planilha "Documento" não encontrada' };
 
-  const inputsObj = inputs as { results?: unknown[] };
-  const results = (inputsObj?.results || []) as unknown[];
+  const inputsObj = inputs as { results?: object[] };
+  const results = (inputsObj?.results || []);
   let updated = 0;
 
   for (const resultItem of results) {
