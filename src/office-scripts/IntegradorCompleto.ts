@@ -15,6 +15,21 @@
  * 4. DOCUMENTOS: Cria payloads de documentos fiscais a partir dos dados
  * 5. RESULTADOS: Aplica resultados das APIs de volta na planilha
  * 6. ⭐ EXECUÇÃO COMPLETA: Executa todo o fluxo com chamadas HTTP diretas
+ * 7. 🛡️ PROTEÇÕES: Ignora linhas vazias e valida campos obrigatórios
+ * 
+ * PROTEÇÕES E VALIDAÇÕES:
+ * ────────────────────────────────────────────────────────────────────────────
+ * ✅ Linhas vazias são automaticamente ignoradas
+ * ✅ Linhas incompletas são identificadas e reportadas com mensagens claras
+ * ✅ Campos obrigatórios validados:
+ *    - Identificador de Cliente
+ *    - Identificador de Produto/Serviço
+ *    - Identificador de Operação
+ *    - CFOP
+ *    - Quantidade do Item
+ *    - Valor Unitário do Item
+ *    - Data de Emissão
+ * ✅ Mensagens de erro detalhadas nas colunas "Retorno API" e "Log de Execução"
  * 
  * NOVO - EXECUÇÃO DIRETA:
  * ────────────────────────────────────────────────────────────────────────────
@@ -24,6 +39,7 @@
  *   2. Valida e busca identificadores faltantes
  *   3. Cria documentos via API
  *   4. Atualiza resultados na planilha
+ *   5. Ignora linhas vazias ou incompletas automaticamente
  * 
  * USO SIMPLIFICADO (RECOMENDADO):
  * ────────────────────────────────────────────────────────────────────────────
@@ -456,6 +472,12 @@ async function validarPlanilha(workbook: ExcelScript.Workbook, token: string, ho
     const row = values[i];
     const notaCriada = row[NotaCriada];
 
+    // Pula linhas vazias
+    if (isLinhaVazia(row)) {
+      if (logger) logger.debug(`Linha ${i + 1} está vazia, ignorando`);
+      continue;
+    }
+
     // Pula linhas já processadas
     if (notaCriada && String(notaCriada).trim() !== '') continue;
 
@@ -575,6 +597,12 @@ async function criarDocumentosAPI(workbook: ExcelScript.Workbook, token: string,
     const row = values[i];
     const notaCriada = row[NotaCriada];
 
+    // Ignora linhas vazias
+    if (isLinhaVazia(row)) {
+      if (logger) logger.debug(`Linha ${i + 1} está vazia, ignorando`);
+      continue;
+    }
+
     // Pula linhas já processadas
     if (notaCriada && String(notaCriada).trim() !== '') {
       if (logger) logger.debug(`Linha ${i + 1} já processada, pulando`);
@@ -584,13 +612,13 @@ async function criarDocumentosAPI(workbook: ExcelScript.Workbook, token: string,
     if (logger) logger.info(`Processando linha ${i + 1}...`);
 
     // Validar campos obrigatórios
-    if (!row[IdentificadorCliente] || !row[IdentificadorOperacao] || !row[IdentificadorServico]) {
-      const erro = 'Campos obrigatórios faltando (Cliente, Operação ou Serviço)';
-      if (logger) logger.error(erro, `Linha ${i + 1}`);
+    const validacao = validarCamposObrigatorios(row);
+    if (!validacao.valido) {
+      if (logger) logger.error(validacao.mensagem, `Linha ${i + 1}`);
       sheet.getRangeByIndexes(i, NotaCriada, 1, 1).setValue('Não');
-      sheet.getRangeByIndexes(i, RetornoAPI, 1, 1).setValue(erro);
-      sheet.getRangeByIndexes(i, LogExecucao, 1, 1).setValue(`[ERRO] ${erro}`);
-      resultados.push({ linha: i + 1, sucesso: false, mensagem: erro });
+      sheet.getRangeByIndexes(i, RetornoAPI, 1, 1).setValue('❌ ERRO VALIDAÇÃO');
+      sheet.getRangeByIndexes(i, LogExecucao, 1, 1).setValue(`[ERRO] ${validacao.mensagem}`);
+      resultados.push({ linha: i + 1, sucesso: false, mensagem: validacao.mensagem });
       continue;
     }
 
@@ -794,6 +822,9 @@ function buildValidationQueries(workbook: ExcelScript.Workbook) {
     const row = values[i];
     const notaCriada = row[NotaCriada];
     
+    // Ignora linhas vazias
+    if (isLinhaVazia(row)) continue;
+    
     // Pula linhas que já têm nota criada
     if (notaCriada && String(notaCriada).trim() !== '') continue;
 
@@ -937,14 +968,18 @@ function buildPedidos(workbook: ExcelScript.Workbook) {
     const row = values[i];
     const notaCriada = row[NotaCriada];
 
+    // Ignora linhas vazias
+    if (isLinhaVazia(row)) continue;
+
     // Pula linhas que já têm nota criada
     if (notaCriada && String(notaCriada).trim() !== '') continue;
 
     // Validar campos obrigatórios
-    if (!row[IdentificadorCliente] || !row[IdentificadorOperacao] || !row[IdentificadorServico]) {
+    const validacao = validarCamposObrigatorios(row);
+    if (!validacao.valido) {
       payloads.push({
         sheetRow: i + 1,
-        error: 'Campos obrigatórios faltando. Execute validação primeiro.',
+        error: validacao.mensagem,
         payload: {}
       });
       continue;
@@ -1034,14 +1069,18 @@ function buildDocumentos(workbook: ExcelScript.Workbook) {
     const row = values[i];
     const notaCriada = row[NotaCriada];
 
+    // Ignora linhas vazias
+    if (isLinhaVazia(row)) continue;
+
     // Pula linhas que já têm nota criada
     if (notaCriada && String(notaCriada).trim() !== '') continue;
 
     // Validar campos obrigatórios
-    if (!row[IdentificadorCliente] || !row[IdentificadorOperacao] || !row[IdentificadorServico]) {
+    const validacao = validarCamposObrigatorios(row);
+    if (!validacao.valido) {
       payloads.push({
         sheetRow: i + 1,
-        error: 'Campos obrigatórios faltando. Execute validação primeiro.',
+        error: validacao.mensagem,
         payload: {}
       });
       continue;
@@ -1167,6 +1206,75 @@ function formatCurrency(value: number): string {
     style: 'currency',
     currency: 'BRL'
   }).format(value);
+}
+
+/**
+ * Verifica se uma linha da planilha está completamente vazia
+ * @param row Array com os valores da linha
+ * @returns true se a linha está vazia, false caso contrário
+ */
+function isLinhaVazia(row: (string | number | boolean)[]): boolean {
+  // Considera vazia se todos os campos relevantes estão vazios
+  for (let i = 0; i < Math.min(row.length, NotaCriada); i++) {
+    const valor = row[i];
+    if (valor !== null && valor !== undefined && String(valor).trim() !== '') {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Valida se uma linha possui todos os campos obrigatórios preenchidos
+ * @param row Array com os valores da linha
+ * @returns Objeto com status da validação e mensagem de erro se houver
+ */
+function validarCamposObrigatorios(row: (string | number | boolean)[]): { valido: boolean; mensagem: string } {
+  const camposFaltantes: string[] = [];
+
+  // Identificador Cliente
+  if (!row[IdentificadorCliente] || String(row[IdentificadorCliente]).trim() === '') {
+    camposFaltantes.push('Identificador Cliente');
+  }
+
+  // Identificador Produto/Serviço
+  if (!row[IdentificadorServico] || String(row[IdentificadorServico]).trim() === '') {
+    camposFaltantes.push('Identificador Produto/Serviço');
+  }
+
+  // Identificador Operação
+  if (!row[IdentificadorOperacao] || String(row[IdentificadorOperacao]).trim() === '') {
+    camposFaltantes.push('Identificador Operação');
+  }
+
+  // CFOP
+  if (!row[CFOP] || String(row[CFOP]).trim() === '') {
+    camposFaltantes.push('CFOP');
+  }
+
+  // Quantidade
+  if (!row[Quantidade] || String(row[Quantidade]).trim() === '') {
+    camposFaltantes.push('Quantidade');
+  }
+
+  // Valor Unitário
+  if (!row[Valor] || String(row[Valor]).trim() === '') {
+    camposFaltantes.push('Valor Unitário');
+  }
+
+  // Data de Emissão
+  if (!row[DataEmissao] || String(row[DataEmissao]).trim() === '') {
+    camposFaltantes.push('Data de Emissão');
+  }
+
+  if (camposFaltantes.length > 0) {
+    return {
+      valido: false,
+      mensagem: `Campos obrigatórios faltando: ${camposFaltantes.join(', ')}`
+    };
+  }
+
+  return { valido: true, mensagem: '' };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
